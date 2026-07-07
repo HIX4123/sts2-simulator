@@ -109,17 +109,12 @@ def _combat_reward(player, room_type, act, rng, fr, verbose):
     fr.gold_after = player.gold
 
     # 카드 보상
-    _add_reward_card(player, room_type, act, rng, fr, verbose,
-                     skip_prob=getattr(player, "_skip_card_prob", 0.0))
+    _add_reward_card(player, room_type, act, rng, fr, verbose)
     if verbose:
         print(f"       보상: 골드 +{gold}, 카드 '{fr.notes}'")
 
 
-def _add_reward_card(player, room_type, act, rng, fr, verbose, skip_prob=0.0):
-    """카드 보상. skip_prob(0.0~1.0)으로 스킵 확률 조절."""
-    if rng.next_float() < skip_prob:
-        fr.notes = "(카드 스킵)"
-        return
+def _add_reward_card(player, room_type, act, rng, fr, verbose):
     from sts2_sim.cards.ironclad.basic import Strike, Defend, Bash
     from sts2_sim.cards.ironclad.uncommon import Inflame, Uppercut, Disarm, Whirlwind
     from sts2_sim.cards.ironclad.rare import Reaper, DemonFormCard, Bludgeon, FiendFire
