@@ -11,6 +11,7 @@ import asyncio
 if TYPE_CHECKING:
     from sts2_sim.core.combat_state import CombatState
     from sts2_sim.entities.creature import Creature
+    from sts2_sim.models.sts2_power import STS2Power
 
 
 class IntentType(Enum):
@@ -322,6 +323,175 @@ class Stabbot(MonsterModel):
             for target in targets:
                 target.take_damage(self.stab_damage, source=self)
                 # TODO: Frail 파워 부여 (1 스택)
+
+
+class Parafright(MonsterModel):
+    """파라프라이트 — 공포 영혼."""
+    monster_id = "parafright"
+    title = "Parafright"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 21
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 21
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=3, times=1))
+        attack_state.follow_up_state = attack_state
+        return MonsterMoveStateMachine([attack_state], attack_state)
+
+    async def _attack_move(self, targets: List[Creature]) -> None:
+        """공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(3, source=self)
+
+
+class EyeWithTeeth(MonsterModel):
+    """이빨 달린 눈."""
+    monster_id = "eye_with_teeth"
+    title = "Eye With Teeth"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 6
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 6
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        bite_state = MoveState("BITE", self._bite_move, Intent(IntentType.ATTACK, damage=2, times=1))
+        bite_state.follow_up_state = bite_state
+        return MonsterMoveStateMachine([bite_state], bite_state)
+
+    async def _bite_move(self, targets: List[Creature]) -> None:
+        """물기."""
+        if targets:
+            for target in targets:
+                target.take_damage(2, source=self)
+
+
+class BattleFriendV1(MonsterModel):
+    """전투 친구 V1."""
+    monster_id = "battle_friend_v1"
+    title = "Battle Friend V1"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 75
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 75
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        support_state = MoveState("SUPPORT", self._support_move, Intent(IntentType.BUFF))
+        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=8, times=1))
+        support_state.follow_up_state = attack_state
+        attack_state.follow_up_state = support_state
+        return MonsterMoveStateMachine([support_state, attack_state], support_state)
+
+    async def _support_move(self, targets: List[Creature]) -> None:
+        """지원 (블록 획득)."""
+        self.gain_block(10)
+
+    async def _attack_move(self, targets: List[Creature]) -> None:
+        """공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(8, source=self)
+
+
+class BattleFriendV2(MonsterModel):
+    """전투 친구 V2."""
+    monster_id = "battle_friend_v2"
+    title = "Battle Friend V2"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 150
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 150
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        support_state = MoveState("SUPPORT", self._support_move, Intent(IntentType.BUFF))
+        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=16, times=1))
+        support_state.follow_up_state = attack_state
+        attack_state.follow_up_state = support_state
+        return MonsterMoveStateMachine([support_state, attack_state], support_state)
+
+    async def _support_move(self, targets: List[Creature]) -> None:
+        """지원 (블록 획득)."""
+        self.gain_block(20)
+
+    async def _attack_move(self, targets: List[Creature]) -> None:
+        """공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(16, source=self)
+
+
+class Zapbot(MonsterModel):
+    """번개 봇."""
+    monster_id = "zapbot"
+    title = "Zapbot"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 25
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 30
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        attack_state = MoveState("ZAP", self._zap_move, Intent(IntentType.ATTACK_DEBUFF, damage=6, times=1))
+        attack_state.follow_up_state = attack_state
+        return MonsterMoveStateMachine([attack_state], attack_state)
+
+    async def _zap_move(self, targets: List[Creature]) -> None:
+        """번개 공격 (디버프 포함)."""
+        if targets:
+            for target in targets:
+                target.take_damage(6, source=self)
+                # TODO: Vulnerable 부여
+
+
+class Guardbot(MonsterModel):
+    """수호 봇."""
+    monster_id = "guardbot"
+    title = "Guardbot"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 35
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 40
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK_DEFEND, damage=5, times=1))
+        defend_state = MoveState("DEFEND", self._defend_move, Intent(IntentType.DEFEND))
+        attack_state.follow_up_state = defend_state
+        defend_state.follow_up_state = attack_state
+        return MonsterMoveStateMachine([attack_state, defend_state], attack_state)
+
+    async def _attack_move(self, targets: List[Creature]) -> None:
+        """공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(5, source=self)
+
+    async def _defend_move(self, targets: List[Creature]) -> None:
+        """방어."""
+        self.gain_block(15)
 
 
 class AxeRubyRaider(MonsterModel):
