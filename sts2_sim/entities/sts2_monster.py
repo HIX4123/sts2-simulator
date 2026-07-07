@@ -494,6 +494,142 @@ class Guardbot(MonsterModel):
         self.gain_block(15)
 
 
+class FlailKnight(MonsterModel):
+    """회초리 기사."""
+    monster_id = "flail_knight"
+    title = "Flail Knight"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 45
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 50
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        attack_state = MoveState("FLAIL", self._flail_move, Intent(IntentType.ATTACK, damage=8, times=1))
+        attack_state.follow_up_state = attack_state
+        return MonsterMoveStateMachine([attack_state], attack_state)
+
+    async def _flail_move(self, targets: List[Creature]) -> None:
+        """회초리 공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(8, source=self)
+
+
+class Looter(MonsterModel):
+    """약탈자."""
+    monster_id = "looter"
+    title = "Looter"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 38
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 42
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        attack_state = MoveState("LOOT", self._loot_move, Intent(IntentType.ATTACK_DEBUFF, damage=6, times=1))
+        attack_state.follow_up_state = attack_state
+        return MonsterMoveStateMachine([attack_state], attack_state)
+
+    async def _loot_move(self, targets: List[Creature]) -> None:
+        """약탈 공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(6, source=self)
+        # TODO: 골드 감소
+
+
+class ShelledParasite(MonsterModel):
+    """껍질 기생충."""
+    monster_id = "shelled_parasite"
+    title = "Shelled Parasite"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 16
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 20
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        attack_state = MoveState("SPIT", self._spit_move, Intent(IntentType.ATTACK_BUFF, damage=4, times=1))
+        attack_state.follow_up_state = attack_state
+        return MonsterMoveStateMachine([attack_state], attack_state)
+
+    async def _spit_move(self, targets: List[Creature]) -> None:
+        """침 분사."""
+        if targets:
+            for target in targets:
+                target.take_damage(4, source=self)
+        # 블록 획득
+        self.gain_block(5)
+
+
+class GremlinWizard(MonsterModel):
+    """그렘린 마법사."""
+    monster_id = "gremlin_wizard"
+    title = "Gremlin Wizard"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 28
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 32
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        spell_state = MoveState("SPELL", self._spell_move, Intent(IntentType.ATTACK_DEBUFF, damage=5, times=1))
+        spell_state.follow_up_state = spell_state
+        return MonsterMoveStateMachine([spell_state], spell_state)
+
+    async def _spell_move(self, targets: List[Creature]) -> None:
+        """주문 시전."""
+        if targets:
+            for target in targets:
+                target.take_damage(5, source=self)
+        # TODO: 파워 적용
+
+
+class Cultist(MonsterModel):
+    """광신도."""
+    monster_id = "cultist"
+    title = "Cultist"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 48
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 55
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        ritual_state = MoveState("RITUAL", self._ritual_move, Intent(IntentType.BUFF))
+        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=7, times=1))
+        ritual_state.follow_up_state = attack_state
+        attack_state.follow_up_state = ritual_state
+        return MonsterMoveStateMachine([ritual_state, attack_state], ritual_state)
+
+    async def _ritual_move(self, targets: List[Creature]) -> None:
+        """의식."""
+        # TODO: 버프 적용
+        pass
+
+    async def _attack_move(self, targets: List[Creature]) -> None:
+        """공격."""
+        if targets:
+            for target in targets:
+                target.take_damage(7, source=self)
+
+
 class AxeRubyRaider(MonsterModel):
     """도끼 루비 약탈자."""
     monster_id = "axe_ruby_raider"

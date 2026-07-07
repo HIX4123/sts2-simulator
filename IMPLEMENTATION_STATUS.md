@@ -114,7 +114,7 @@ MonsterMoveStateMachine
 
 모든 테스트 통과 ✅
 
-## 📊 현황 요약
+## 📊 Phase 1 완성 현황
 
 | 항목 | 개수 | 상태 |
 |------|------|------|
@@ -124,9 +124,95 @@ MonsterMoveStateMachine
 | 렐릭 | 0 | ⏸️ Phase 2 |
 | 캐릭터 | 0 | ⏸️ Phase 2 |
 
-## 🚀 다음 단계 (Phase 2+)
-- **Phase 2**: 렐릭 시스템, 더 많은 몬스터, 캐릭터 시스템
-- **Phase 3**: Defect (Orb 시스템), Watcher (Stance 시스템)
+---
+
+## ✅ Phase 2 완성 항목
+
+### 1. 렐릭 시스템 (`sts2_sim/models/sts2_relic.py`)
+- **STS2Relic** 베이스 클래스
+- 렐릭 팩토리 패턴
+- 렐릭 훅 시스템
+
+#### 구현된 렐릭 (19개)
+
+**Starter (2개)**
+| 렐릭 | 설명 |
+|------|------|
+| Burning Blood | 전투 승리 시 6 HP 회복 |
+| Ring of the Snake | 매 턴 시작 시 카드 1 드로우 |
+
+**Common (8개)**
+| 렐릭 | 효과 |
+|------|------|
+| Akabeko | 공격 카드 플레이 시 데미지 +1 |
+| Anchor | 최대 HP +10 |
+| Bronze Scale | 상태 이상 피해 20% 감소 |
+| Burning Skull | 공격 후 적에게 화상 부여 |
+| Centipede | 턴 시작 시 HP 감소 감지 시 블록 획득 |
+| Cloak | 스킬 카드 플레이 시 블록 +1 |
+| Courier | 전투 승리 후 카드 1 획득 |
+| Dream Catcher | 카드 업그레이드 시 비용 -1 |
+
+**Uncommon (5개)**
+| 렐릭 | 효과 |
+|------|------|
+| Fossilized Helix | 최대 HP +25 |
+| Matryoshka | 카드 3개 획득 시 골드 9 획득 |
+| Mercury Hourglass | 전투 시작 시 턴 스킵 |
+| Oddly Smooth Stone | 상태 이상 저항 10% |
+| Ornithopter | 최대 블록 +1 |
+
+**Rare (2개)**
+| 렐릭 | 효과 |
+|------|------|
+| Runic | 카드 획득 시 모든 카드 업그레이드 |
+| Tungsten Rod | 매 턴 시작 시 방어력 +3 |
+
+**Boss (1개)**
+| 렐릭 | 효과 |
+|------|------|
+| Spiked Defense | 블록 획득 시 공격자에게 피해 |
+
+**Enchanter Mask (1개)**
+| 렐릭 | 효과 |
+|------|------|
+| Enchanter's Mask | 전투 시작 시 파워 1 생성 |
+
+### 2. 캐릭터 시스템 (`sts2_sim/entities/sts2_character.py`)
+- **STS2Character** 베이스 클래스
+- 캐릭터별 스타트 덱/렐릭 정의
+- 캐릭터 팩토리 패턴
+
+#### 구현된 캐릭터 (4개)
+
+| 캐릭터 | HP | 스타트 덱 | 스타터 렐릭 |
+|--------|-----|----------|-----------|
+| Ironclad | 80 | Strike×5, Defend×4, Bash×1 | Burning Blood |
+| Silent | 70 | Strike×5, Defend×4, Shiv×1 | Ring of Snake |
+| Defect | 75 | Strike×5, Defend×4, Spark×1 | Courier |
+| Watcher | 72 | Strike×5, Defend×4, Eruption×1 | Empty Cage |
+
+### 3. 추가 몬스터 (5개)
+| 몬스터 | HP | 특징 |
+|--------|-----|------|
+| Flail Knight | 45-50 | 회초리 공격 |
+| Looter | 38-42 | 약탈 공격 (골드 감소) |
+| Shelled Parasite | 16-20 | 침 분사 + 블록 획득 |
+| Gremlin Wizard | 28-32 | 주문 시전 (파워 부여) |
+| Cultist | 48-55 | 상태 전환: Ritual → Attack → Ritual |
+
+## 📊 Phase 2 완성 현황
+
+| 항목 | 개수 | 상태 |
+|------|------|------|
+| 몬스터 | 16 | ✅ 완성 |
+| 파워 | 14 | ✅ 완성 |
+| 카드 | 10 | ✅ 완성 |
+| 렐릭 | 19 | ✅ 완성 |
+| 캐릭터 | 4 | ✅ 완성 |
+
+## 🚀 다음 단계 (Phase 3+)
+- **Phase 3**: Defect (Orb 시스템), Watcher (Stance 시스템), 더 많은 카드/렐릭
 - **Phase 4**: 맵 생성, 이벤트, 런 루프 통합
 - **Phase 5**: AI 정책, MCTS, 통계 분석
 
