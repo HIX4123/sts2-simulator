@@ -1,17 +1,20 @@
 """
-STS2 MonsterModel — STS2 디컴파일 데이터 기반 몬스터 구현.
-디컬파일 코드 구조를 모방한 Python 포트.
+STS2 MonsterModel — 디컴파일 MegaCrit.Sts2.Core.Models.Monsters.* 이식.
+
+- MonsterModel은 Creature를 상속 (HP/블록/파워/데미지 파이프라인 공유)
+- MonsterMoveStateMachine: MoveState(고정 전환) + RandomBranchState(가중치 분기)
+- 모든 수치는 디컴파일 기준값 (Ascension 미적용 기본값)
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+import random
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Optional, List, Callable, Dict, Any
-import asyncio
+from typing import TYPE_CHECKING, Callable, List, Optional
+
+from sts2_sim.entities.creature import Creature
 
 if TYPE_CHECKING:
     from sts2_sim.core.combat import CombatState
-    from sts2_sim.entities.creature import Creature
-    from sts2_sim.models.sts2_power import STS2Power
 
 
 class IntentType(Enum):
@@ -25,8 +28,10 @@ class IntentType(Enum):
     DEFEND = auto()
     DEFEND_BUFF = auto()
     DEFEND_DEBUFF = auto()
+    STATUS = auto()
     SLEEP = auto()
     STUN = auto()
+    ESCAPE = auto()
     HIDDEN = auto()
     UNKNOWN = auto()
 
@@ -39,21 +44,54 @@ class Intent:
     times: int = 1
 
 
-@dataclass
-class MoveState:
+class MonsterState:
+    """상태 머신 노드 베이스."""
+    def __init__(self, name: str):
+        self.name = name
+
+
+class MoveState(MonsterState):
     """몬스터의 한 행동 상태."""
-    name: str
-    execute: Callable  # async callable
-    intent: Intent
-    follow_up_state: Optional[MoveState] = None
+    def __init__(self, name: str, execute: Callable, intent: Intent):
+        super().__init__(name)
+        self.execute = execute
+        self.intent = intent
+        self.follow_up_state: Optional[MonsterState] = None
+
+
+class RandomBranchState(MonsterState):
+    """가중치 기반 무작위 분기 (디컴파일 RandomBranchState 대응).
+
+    cannot_repeat=True인 분기는 직전 행동과 같으면 선택되지 않는다
+    (디컴파일 MoveRepeatType.CannotRepeat).
+    """
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.branches: List[tuple] = []  # (state, weight, cannot_repeat)
+
+    def add_branch(self, state: MoveState, weight: int = 1, cannot_repeat: bool = False):
+        self.branches.append((state, weight, cannot_repeat))
+
+    def resolve(self, rng: random.Random, last_move_name: Optional[str]) -> MoveState:
+        candidates = [
+            (s, w) for s, w, cr in self.branches
+            if not (cr and s.name == last_move_name)
+        ]
+        if not candidates:
+            candidates = [(s, w) for s, w, _ in self.branches]
+        states = [s for s, _ in candidates]
+        weights = [w for _, w in candidates]
+        return rng.choices(states, weights=weights, k=1)[0]
 
 
 class MonsterMoveStateMachine:
     """상태 머신: 몬스터의 행동 순서를 관리."""
-    def __init__(self, states: List[MoveState], initial_state: MoveState):
+
+    def __init__(self, states: List[MonsterState], initial_state: MoveState):
         self.states = states
-        self.current_state = initial_state
-        self._move_history: List[str] = []
+        self.current_state: MoveState = initial_state
+        self.rng: random.Random = random.Random()
+        self._last_move_name: Optional[str] = None
 
     def get_current_intent(self) -> Intent:
         return self.current_state.intent
@@ -61,143 +99,102 @@ class MonsterMoveStateMachine:
     def get_current_move_name(self) -> str:
         return self.current_state.name
 
-    async def execute_move(self, targets: List[Creature]) -> None:
-        """현재 상태의 행동 실행."""
+    def execute_move(self, targets: List[Creature]) -> None:
         if self.current_state.execute:
-            await self.current_state.execute(targets)
-        self._move_history.append(self.current_state.name)
+            self.current_state.execute(targets)
+        self._last_move_name = self.current_state.name
 
     def advance_state(self) -> None:
-        """다음 상태로 진행."""
-        if self.current_state.follow_up_state:
-            self.current_state = self.current_state.follow_up_state
+        nxt = self.current_state.follow_up_state
+        while isinstance(nxt, RandomBranchState):
+            nxt = nxt.resolve(self.rng, self._last_move_name)
+        if nxt is not None:
+            self.current_state = nxt
 
 
-class MonsterModel:
-    """
-    STS2 MonsterModel.
-    게임의 모든 몬스터 베이스 클래스.
-    """
+class MonsterModel(Creature):
+    """STS2 몬스터 베이스 (MonsterModel 대응). Creature 상속으로 파워/블록 공유."""
+
     monster_id: str = "unknown_monster"
     title: str = "Unknown Monster"
 
     def __init__(self):
-        self._current_hp: int = 0
-        self._block: int = 0
-        self._powers: Dict[str, Any] = {}
+        super().__init__(self.title, 1)
         self._move_state_machine: Optional[MonsterMoveStateMachine] = None
-        self.combat_state: Optional[CombatState] = None
-        self.creature: Optional[Creature] = None
+        self.combat_state: Optional["CombatState"] = None
+        self.escaped = False
 
     @property
     def min_initial_hp(self) -> int:
-        """최소 초기 HP."""
         return 0
 
     @property
     def max_initial_hp(self) -> int:
-        """최대 초기 HP (난이도 무관)."""
         return self.min_initial_hp
 
     @property
-    def current_hp(self) -> int:
-        return self._current_hp
-
-    @property
-    def max_hp(self) -> int:
-        return self.max_initial_hp
-
-    @property
-    def block(self) -> int:
-        return self._block
-
-    @property
-    def is_dead(self) -> bool:
-        return self._current_hp <= 0
-
-    @property
-    def hp_percent(self) -> float:
-        return self._current_hp / self.max_hp if self.max_hp > 0 else 0.0
+    def is_gone(self) -> bool:
+        """전투에서 제거됨 (사망 또는 도주)."""
+        return self.is_dead or self.escaped
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        """상태 머신 생성 (서브클래스에서 오버라이드)."""
-        # 기본: 아무것도 안 하는 상태
-        nothing_state = MoveState("NOTHING", self._nothing_move, Intent(IntentType.HIDDEN))
-        nothing_state.follow_up_state = nothing_state
-        return MonsterMoveStateMachine([nothing_state], nothing_state)
+        nothing = MoveState("NOTHING", self._nothing_move, Intent(IntentType.HIDDEN))
+        nothing.follow_up_state = nothing
+        return MonsterMoveStateMachine([nothing], nothing)
 
-    async def _nothing_move(self, targets: List[Creature]) -> None:
-        """아무것도 하지 않는 행동."""
+    def _nothing_move(self, targets: List[Creature]) -> None:
         pass
 
-    def setup_for_combat(self, state: CombatState) -> None:
-        """전투 시작 시 초기화."""
+    def setup_for_combat(self, state: Optional["CombatState"], rng: Optional[random.Random] = None) -> None:
+        """전투 시작 시 초기화. 이후 after_added_to_room() 트리거."""
         self.combat_state = state
+        self._max_hp = self.max_initial_hp
         self._current_hp = self.max_initial_hp
         self._block = 0
+        self.escaped = False
         self._move_state_machine = self.generate_move_state_machine()
+        if rng is not None:
+            self._move_state_machine.rng = rng
+        self.after_added_to_room()
 
-    async def after_added_to_room(self) -> None:
-        """방에 추가된 후 호출 (오버라이드 가능)."""
+    def after_added_to_room(self) -> None:
+        """전투 투입 직후 (개전 버프 등, 서브클래스 오버라이드)."""
         pass
 
     def get_current_intent(self) -> Intent:
-        """현재 행동의 인텐트."""
         if self._move_state_machine:
             return self._move_state_machine.get_current_intent()
         return Intent(IntentType.UNKNOWN)
 
-    async def take_turn(self, targets: List[Creature]) -> None:
-        """몬스터의 턴 실행."""
+    def take_turn(self, targets: List[Creature]) -> None:
+        """현재 행동 실행 후 다음 상태로 전환."""
         if self._move_state_machine:
-            await self._move_state_machine.execute_move(targets)
+            self._move_state_machine.execute_move(targets)
             self._move_state_machine.advance_state()
 
-    def prepare_for_next_turn(self) -> None:
-        """다음 턴 준비 (블록 초기화, 파워 틱 등)."""
-        self._block = 0
-        # TODO: 파워 틱
-        # for p in self._powers.values():
-        #     p.tick_duration()
+    def attack(self, target: Creature, base_damage: int) -> None:
+        """공격 파이프라인 (자신의 Strength/Weak 반영)."""
+        target.take_damage(self.compute_attack_damage(base_damage), source=self)
 
-    def gain_block(self, amount: int) -> None:
-        """블록 획득."""
-        self._block += max(0, amount)
+    def add_status_to_player_discard(self, card_id: str, count: int) -> None:
+        """플레이어 버림 더미에 상태이상 카드 삽입 (Dazed/Slimed)."""
+        if self.combat_state and hasattr(self.combat_state, "add_status_to_discard"):
+            self.combat_state.add_status_to_discard(card_id, count)
 
-    def lose_hp(self, amount: int) -> int:
-        """HP 감소."""
-        actual = min(amount, self._current_hp)
-        self._current_hp -= actual
-        return actual
-
-    def take_damage(self, amount: int, source: Optional[Creature] = None) -> Dict[str, Any]:
-        """데미지 처리."""
-        if amount <= 0:
-            return {"hp_lost": 0, "killed": False}
-
-        # 블록 처리
-        block_absorbed = min(self._block, amount)
-        self._block -= block_absorbed
-        hp_dmg = amount - block_absorbed
-
-        # HP 감소
-        hp_lost = self.lose_hp(hp_dmg)
-        return {"hp_lost": hp_lost, "killed": self.is_dead}
-
-    def heal(self, amount: int) -> None:
-        """HP 회복."""
-        self._current_hp = min(self._current_hp + amount, self.max_hp)
+    def escape(self) -> None:
+        """전투에서 도주 (FatGremlin 등)."""
+        self.escaped = True
 
     def __repr__(self) -> str:
-        return f"{self.title}({self._current_hp}/{self.max_hp})"
+        return f"{self.title}({self._current_hp}/{self._max_hp})"
 
 
 # ══════════════════════════════════════════
-# STS2 구체 몬스터 구현 (선별)
+# 테스트 지원 몬스터 (디컴파일에도 존재)
 # ══════════════════════════════════════════
 
 class BigDummy(MonsterModel):
-    """테스트용 더미."""
+    """테스트용 더미 (HP 9999)."""
     monster_id = "big_dummy"
     title = "Big Dummy"
 
@@ -205,14 +202,9 @@ class BigDummy(MonsterModel):
     def min_initial_hp(self) -> int:
         return 9999
 
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        nothing_state = MoveState("NOTHING", self._nothing_move, Intent(IntentType.HIDDEN))
-        nothing_state.follow_up_state = nothing_state
-        return MonsterMoveStateMachine([nothing_state], nothing_state)
-
 
 class SingleAttackMoveMonster(MonsterModel):
-    """단일 공격만 하는 몬스터."""
+    """단일 공격 테스트 몬스터 (POKE 1딜)."""
     monster_id = "single_attack"
     title = "Single Attack Monster"
 
@@ -221,19 +213,17 @@ class SingleAttackMoveMonster(MonsterModel):
         return 999
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        poke_state = MoveState("POKE", self._poke_move, Intent(IntentType.ATTACK, damage=1, times=1))
-        poke_state.follow_up_state = poke_state
-        return MonsterMoveStateMachine([poke_state], poke_state)
+        poke = MoveState("POKE", self._poke_move, Intent(IntentType.ATTACK, damage=1))
+        poke.follow_up_state = poke
+        return MonsterMoveStateMachine([poke], poke)
 
-    async def _poke_move(self, targets: List[Creature]) -> None:
-        """1의 데미지 공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(1, source=self)
+    def _poke_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, 1)
 
 
 class MultiAttackMoveMonster(MonsterModel):
-    """여러 번 공격하는 몬스터."""
+    """다중 공격 테스트 몬스터 (2딜×3)."""
     monster_id = "multi_attack"
     title = "Multi Attack Monster"
 
@@ -242,313 +232,144 @@ class MultiAttackMoveMonster(MonsterModel):
         return 999
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=2, times=3))
-        attack_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state], attack_state)
+        atk = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=2, times=3))
+        atk.follow_up_state = atk
+        return MonsterMoveStateMachine([atk], atk)
 
-    async def _attack_move(self, targets: List[Creature]) -> None:
-        """2의 데미지를 3번 공격."""
-        if targets:
-            for _ in range(3):
-                for target in targets:
-                    target.take_damage(2, source=self)
+    def _attack_move(self, targets: List[Creature]) -> None:
+        for _ in range(3):
+            for target in targets:
+                self.attack(target, 2)
 
 
 # ══════════════════════════════════════════
-# STS2 실제 몬스터들
+# 실전 몬스터 (디컴파일 수치)
 # ══════════════════════════════════════════
 
 class TwigSlimeS(MonsterModel):
-    """작은 나뭇가지 슬라임."""
+    """나뭇가지 슬라임 (소) — HP 7~11, TACKLE 4딜."""
     monster_id = "twig_slime_s"
     title = "Twig Slime (S)"
 
     @property
     def min_initial_hp(self) -> int:
-        return 7  # 기본값 (ToughEnemies 난이도: 8)
+        return 7
 
     @property
     def max_initial_hp(self) -> int:
-        return 11  # 기본값 (ToughEnemies 난이도: 12)
+        return 11
 
     @property
     def tackle_damage(self) -> int:
-        return 4  # 기본값 (DeadlyEnemies 난이도: 5)
+        return 4
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        tackle_state = MoveState(
-            "TACKLE_MOVE",
-            self._tackle_move,
-            Intent(IntentType.ATTACK, damage=self.tackle_damage, times=1)
-        )
-        tackle_state.follow_up_state = tackle_state
-        return MonsterMoveStateMachine([tackle_state], tackle_state)
+        tackle = MoveState("TACKLE_MOVE", self._tackle_move,
+                           Intent(IntentType.ATTACK, damage=self.tackle_damage))
+        tackle.follow_up_state = tackle
+        return MonsterMoveStateMachine([tackle], tackle)
 
-    async def _tackle_move(self, targets: List[Creature]) -> None:
-        """태클 공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(self.tackle_damage, source=self)
+    def _tackle_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.tackle_damage)
+
+
+class TwigSlimeM(MonsterModel):
+    """나뭇가지 슬라임 (중) — HP 26~28. POKEY_POUNCE 11딜 / STICKY_SHOT Slimed 1장."""
+    monster_id = "twig_slime_m"
+    title = "Twig Slime (M)"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 26
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 28
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        pounce = MoveState("POKEY_POUNCE_MOVE", self._pounce_move,
+                           Intent(IntentType.ATTACK, damage=11))
+        sticky = MoveState("STICKY_SHOT_MOVE", self._sticky_move,
+                           Intent(IntentType.STATUS))
+        branch = RandomBranchState("RAND")
+        branch.add_branch(pounce, weight=2)
+        branch.add_branch(sticky, weight=1, cannot_repeat=True)
+        pounce.follow_up_state = branch
+        sticky.follow_up_state = branch
+        return MonsterMoveStateMachine([pounce, sticky, branch], sticky)
+
+    def _pounce_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, 11)
+
+    def _sticky_move(self, targets: List[Creature]) -> None:
+        self.add_status_to_player_discard("slimed", 1)
 
 
 class Stabbot(MonsterModel):
-    """스탭봇 로봇."""
+    """스탭봇 — HP 18~23, STAB 11딜 + 허약 1."""
     monster_id = "stabbot"
     title = "Stabbot"
 
     @property
     def min_initial_hp(self) -> int:
-        return 18  # 기본값 (ToughEnemies: 19)
+        return 18
 
     @property
     def max_initial_hp(self) -> int:
-        return 23  # 기본값 (ToughEnemies: 24)
+        return 23
 
     @property
     def stab_damage(self) -> int:
-        return 11  # 기본값 (DeadlyEnemies: 12)
+        return 11
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        stab_state = MoveState(
-            "STAB_MOVE",
-            self._stab_move,
-            Intent(IntentType.ATTACK_DEBUFF, damage=self.stab_damage, times=1)
-        )
-        stab_state.follow_up_state = stab_state
-        return MonsterMoveStateMachine([stab_state], stab_state)
+        stab = MoveState("STAB_MOVE", self._stab_move,
+                         Intent(IntentType.ATTACK_DEBUFF, damage=self.stab_damage))
+        stab.follow_up_state = stab
+        return MonsterMoveStateMachine([stab], stab)
 
-    async def _stab_move(self, targets: List[Creature]) -> None:
-        """찌르기 공격 + Frail 부여."""
-        if targets:
-            for target in targets:
-                target.take_damage(self.stab_damage, source=self)
-                # TODO: Frail 파워 부여 (1 스택)
-
-
-class Parafright(MonsterModel):
-    """파라프라이트 — 공포 영혼."""
-    monster_id = "parafright"
-    title = "Parafright"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 21
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 21
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=3, times=1))
-        attack_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state], attack_state)
-
-    async def _attack_move(self, targets: List[Creature]) -> None:
-        """공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(3, source=self)
-
-
-class EyeWithTeeth(MonsterModel):
-    """이빨 달린 눈."""
-    monster_id = "eye_with_teeth"
-    title = "Eye With Teeth"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 6
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 6
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        bite_state = MoveState("BITE", self._bite_move, Intent(IntentType.ATTACK, damage=2, times=1))
-        bite_state.follow_up_state = bite_state
-        return MonsterMoveStateMachine([bite_state], bite_state)
-
-    async def _bite_move(self, targets: List[Creature]) -> None:
-        """물기."""
-        if targets:
-            for target in targets:
-                target.take_damage(2, source=self)
-
-
-class BattleFriendV1(MonsterModel):
-    """전투 친구 V1."""
-    monster_id = "battle_friend_v1"
-    title = "Battle Friend V1"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 75
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 75
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        support_state = MoveState("SUPPORT", self._support_move, Intent(IntentType.BUFF))
-        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=8, times=1))
-        support_state.follow_up_state = attack_state
-        attack_state.follow_up_state = support_state
-        return MonsterMoveStateMachine([support_state, attack_state], support_state)
-
-    async def _support_move(self, targets: List[Creature]) -> None:
-        """지원 (블록 획득)."""
-        self.gain_block(10)
-
-    async def _attack_move(self, targets: List[Creature]) -> None:
-        """공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(8, source=self)
-
-
-class BattleFriendV2(MonsterModel):
-    """전투 친구 V2."""
-    monster_id = "battle_friend_v2"
-    title = "Battle Friend V2"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 150
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 150
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        support_state = MoveState("SUPPORT", self._support_move, Intent(IntentType.BUFF))
-        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=16, times=1))
-        support_state.follow_up_state = attack_state
-        attack_state.follow_up_state = support_state
-        return MonsterMoveStateMachine([support_state, attack_state], support_state)
-
-    async def _support_move(self, targets: List[Creature]) -> None:
-        """지원 (블록 획득)."""
-        self.gain_block(20)
-
-    async def _attack_move(self, targets: List[Creature]) -> None:
-        """공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(16, source=self)
+    def _stab_move(self, targets: List[Creature]) -> None:
+        from sts2_sim.models.sts2_power import Frail
+        for target in targets:
+            self.attack(target, self.stab_damage)
+            if hasattr(target, "apply_power"):
+                target.apply_power(Frail(1))
 
 
 class Zapbot(MonsterModel):
-    """번개 봇."""
+    """잽봇 — HP 18~23, ZAP 14딜. (개전 시 HighVoltage 2 — 파워 미이식)."""
     monster_id = "zapbot"
     title = "Zapbot"
 
     @property
     def min_initial_hp(self) -> int:
-        return 25
+        return 18
 
     @property
     def max_initial_hp(self) -> int:
-        return 30
+        return 23
+
+    @property
+    def zap_damage(self) -> int:
+        return 14
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("ZAP", self._zap_move, Intent(IntentType.ATTACK_DEBUFF, damage=6, times=1))
-        attack_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state], attack_state)
+        zap = MoveState("ZAP", self._zap_move,
+                        Intent(IntentType.ATTACK, damage=self.zap_damage))
+        zap.follow_up_state = zap
+        return MonsterMoveStateMachine([zap], zap)
 
-    async def _zap_move(self, targets: List[Creature]) -> None:
-        """번개 공격 (디버프 포함)."""
-        if targets:
-            for target in targets:
-                target.take_damage(6, source=self)
-                # TODO: Vulnerable 부여
+    def _zap_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.zap_damage)
 
 
 class Guardbot(MonsterModel):
-    """수호 봇."""
+    """가드봇 — HP 16~20. GUARD: Fabricator 아군에 15블록 (Fabricator 미이식 시 무동작)."""
     monster_id = "guardbot"
     title = "Guardbot"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 35
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 40
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK_DEFEND, damage=5, times=1))
-        defend_state = MoveState("DEFEND", self._defend_move, Intent(IntentType.DEFEND))
-        attack_state.follow_up_state = defend_state
-        defend_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state, defend_state], attack_state)
-
-    async def _attack_move(self, targets: List[Creature]) -> None:
-        """공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(5, source=self)
-
-    async def _defend_move(self, targets: List[Creature]) -> None:
-        """방어."""
-        self.gain_block(15)
-
-
-class FlailKnight(MonsterModel):
-    """회초리 기사."""
-    monster_id = "flail_knight"
-    title = "Flail Knight"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 45
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 50
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("FLAIL", self._flail_move, Intent(IntentType.ATTACK, damage=8, times=1))
-        attack_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state], attack_state)
-
-    async def _flail_move(self, targets: List[Creature]) -> None:
-        """회초리 공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(8, source=self)
-
-
-class Looter(MonsterModel):
-    """약탈자."""
-    monster_id = "looter"
-    title = "Looter"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 38
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 42
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("LOOT", self._loot_move, Intent(IntentType.ATTACK_DEBUFF, damage=6, times=1))
-        attack_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state], attack_state)
-
-    async def _loot_move(self, targets: List[Creature]) -> None:
-        """약탈 공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(6, source=self)
-        # TODO: 골드 감소
-
-
-class ShelledParasite(MonsterModel):
-    """껍질 기생충."""
-    monster_id = "shelled_parasite"
-    title = "Shelled Parasite"
 
     @property
     def min_initial_hp(self) -> int:
@@ -559,135 +380,331 @@ class ShelledParasite(MonsterModel):
         return 20
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        attack_state = MoveState("SPIT", self._spit_move, Intent(IntentType.ATTACK_BUFF, damage=4, times=1))
-        attack_state.follow_up_state = attack_state
-        return MonsterMoveStateMachine([attack_state], attack_state)
+        guard = MoveState("GUARD_MOVE", self._guard_move, Intent(IntentType.DEFEND))
+        guard.follow_up_state = guard
+        return MonsterMoveStateMachine([guard], guard)
 
-    async def _spit_move(self, targets: List[Creature]) -> None:
-        """침 분사."""
-        if targets:
-            for target in targets:
-                target.take_damage(4, source=self)
-        # 블록 획득
-        self.gain_block(5)
-
-
-class GremlinWizard(MonsterModel):
-    """그렘린 마법사."""
-    monster_id = "gremlin_wizard"
-    title = "Gremlin Wizard"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 28
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 32
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        spell_state = MoveState("SPELL", self._spell_move, Intent(IntentType.ATTACK_DEBUFF, damage=5, times=1))
-        spell_state.follow_up_state = spell_state
-        return MonsterMoveStateMachine([spell_state], spell_state)
-
-    async def _spell_move(self, targets: List[Creature]) -> None:
-        """주문 시전."""
-        if targets:
-            for target in targets:
-                target.take_damage(5, source=self)
-        # TODO: 파워 적용
-
-
-class Cultist(MonsterModel):
-    """광신도."""
-    monster_id = "cultist"
-    title = "Cultist"
-
-    @property
-    def min_initial_hp(self) -> int:
-        return 48
-
-    @property
-    def max_initial_hp(self) -> int:
-        return 55
-
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        ritual_state = MoveState("RITUAL", self._ritual_move, Intent(IntentType.BUFF))
-        attack_state = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=7, times=1))
-        ritual_state.follow_up_state = attack_state
-        attack_state.follow_up_state = ritual_state
-        return MonsterMoveStateMachine([ritual_state, attack_state], ritual_state)
-
-    async def _ritual_move(self, targets: List[Creature]) -> None:
-        """의식."""
-        # TODO: 버프 적용
-        pass
-
-    async def _attack_move(self, targets: List[Creature]) -> None:
-        """공격."""
-        if targets:
-            for target in targets:
-                target.take_damage(7, source=self)
+    def _guard_move(self, targets: List[Creature]) -> None:
+        if self.combat_state is None:
+            return
+        for ally in getattr(self.combat_state, "monsters", []):
+            if getattr(ally, "monster_id", "") == "fabricator" and not ally.is_gone:
+                ally.gain_block(15)
 
 
 class AxeRubyRaider(MonsterModel):
-    """도끼 루비 약탈자."""
+    """도끼 루비 약탈자 — HP 20~22. SWING 5딜+5블록 ×2 → BIG_SWING 12딜 순환."""
     monster_id = "axe_ruby_raider"
     title = "Axe Ruby Raider"
 
     @property
     def min_initial_hp(self) -> int:
-        return 20  # 기본값 (ToughEnemies: 21)
+        return 20
 
     @property
     def max_initial_hp(self) -> int:
-        return 22  # 기본값 (ToughEnemies: 23)
+        return 22
 
     @property
     def swing_damage(self) -> int:
-        return 5  # 기본값 (DeadlyEnemies: 6)
+        return 5
 
     @property
     def swing_block(self) -> int:
-        return 5  # 기본값 (DeadlyEnemies: 6)
+        return 5
 
     @property
     def big_swing_damage(self) -> int:
-        return 12  # 기본값 (DeadlyEnemies: 13)
+        return 12
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        swing1_state = MoveState(
-            "SWING_1",
-            self._swing_move,
-            Intent(IntentType.ATTACK_DEFEND, damage=self.swing_damage, times=1)
-        )
-        swing2_state = MoveState(
-            "SWING_2",
-            self._swing_move,
-            Intent(IntentType.ATTACK_DEFEND, damage=self.swing_damage, times=1)
-        )
-        big_swing_state = MoveState(
-            "BIG_SWING",
-            self._big_swing_move,
-            Intent(IntentType.ATTACK, damage=self.big_swing_damage, times=1)
-        )
+        swing1 = MoveState("SWING_1", self._swing_move,
+                           Intent(IntentType.ATTACK_DEFEND, damage=self.swing_damage))
+        swing2 = MoveState("SWING_2", self._swing_move,
+                           Intent(IntentType.ATTACK_DEFEND, damage=self.swing_damage))
+        big = MoveState("BIG_SWING", self._big_swing_move,
+                        Intent(IntentType.ATTACK, damage=self.big_swing_damage))
+        swing1.follow_up_state = swing2
+        swing2.follow_up_state = big
+        big.follow_up_state = swing1
+        return MonsterMoveStateMachine([swing1, swing2, big], swing1)
 
-        # 상태 전환: SWING_1 → SWING_2 → BIG_SWING → SWING_1
-        swing1_state.follow_up_state = swing2_state
-        swing2_state.follow_up_state = big_swing_state
-        big_swing_state.follow_up_state = swing1_state
-
-        return MonsterMoveStateMachine([swing1_state, swing2_state, big_swing_state], swing1_state)
-
-    async def _swing_move(self, targets: List[Creature]) -> None:
-        """일반 스윙: 데미지 + 블록 획득."""
-        if targets:
-            for target in targets:
-                target.take_damage(self.swing_damage, source=self)
+    def _swing_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.swing_damage)
         self.gain_block(self.swing_block)
 
-    async def _big_swing_move(self, targets: List[Creature]) -> None:
-        """큰 스윙: 데미지만."""
-        if targets:
+    def _big_swing_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.big_swing_damage)
+
+
+class FlailKnight(MonsterModel):
+    """도리깨 기사 (엘리트) — HP 101.
+    WAR_CHANT 힘+3 (연속 불가) / FLAIL 9딜×2 (w2) / RAM 15딜 (w2). 초기 RAM."""
+    monster_id = "flail_knight"
+    title = "Flail Knight"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 101
+
+    @property
+    def flail_damage(self) -> int:
+        return 9
+
+    @property
+    def ram_damage(self) -> int:
+        return 15
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        chant = MoveState("WAR_CHANT", self._war_chant_move, Intent(IntentType.BUFF))
+        flail = MoveState("FLAIL_MOVE", self._flail_move,
+                          Intent(IntentType.ATTACK, damage=self.flail_damage, times=2))
+        ram = MoveState("RAM_MOVE", self._ram_move,
+                        Intent(IntentType.ATTACK, damage=self.ram_damage))
+        branch = RandomBranchState("RAND")
+        branch.add_branch(chant, weight=1, cannot_repeat=True)
+        branch.add_branch(flail, weight=2)
+        branch.add_branch(ram, weight=2)
+        chant.follow_up_state = branch
+        flail.follow_up_state = branch
+        ram.follow_up_state = branch
+        return MonsterMoveStateMachine([chant, flail, ram, branch], ram)
+
+    def _war_chant_move(self, targets: List[Creature]) -> None:
+        from sts2_sim.models.sts2_power import Strength
+        self.apply_power(Strength(3))
+
+    def _flail_move(self, targets: List[Creature]) -> None:
+        for _ in range(2):
             for target in targets:
-                target.take_damage(self.big_swing_damage, source=self)
+                self.attack(target, self.flail_damage)
+
+    def _ram_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.ram_damage)
+
+
+class DampCultist(MonsterModel):
+    """축축한 광신도 — HP 51~53. INCANTATION 의식+5 → DARK_STRIKE 1딜 반복."""
+    monster_id = "damp_cultist"
+    title = "Damp Cultist"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 51
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 53
+
+    @property
+    def dark_strike_damage(self) -> int:
+        return 1
+
+    @property
+    def incantation_amount(self) -> int:
+        return 5
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        incant = MoveState("INCANTATION_MOVE", self._incantation_move, Intent(IntentType.BUFF))
+        strike = MoveState("DARK_STRIKE_MOVE", self._dark_strike_move,
+                           Intent(IntentType.ATTACK, damage=self.dark_strike_damage))
+        incant.follow_up_state = strike
+        strike.follow_up_state = strike
+        return MonsterMoveStateMachine([incant, strike], incant)
+
+    def _incantation_move(self, targets: List[Creature]) -> None:
+        from sts2_sim.models.sts2_power import Ritual
+        self.apply_power(Ritual(self.incantation_amount))
+
+    def _dark_strike_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.dark_strike_damage)
+
+
+class Chomper(MonsterModel):
+    """쵸퍼 — HP 60~64, 개전 시 Artifact 2.
+    CLAMP 8딜×2 ↔ SCREECH Dazed 3장 삽입."""
+    monster_id = "chomper"
+    title = "Chomper"
+
+    def __init__(self, scream_first: bool = False):
+        super().__init__()
+        self.scream_first = scream_first
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 60
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 64
+
+    @property
+    def clamp_damage(self) -> int:
+        return 8
+
+    def after_added_to_room(self) -> None:
+        from sts2_sim.models.sts2_power import Artifact
+        self.apply_power(Artifact(2))
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        clamp = MoveState("CLAMP_MOVE", self._clamp_move,
+                          Intent(IntentType.ATTACK, damage=self.clamp_damage, times=2))
+        screech = MoveState("SCREECH_MOVE", self._screech_move, Intent(IntentType.STATUS))
+        clamp.follow_up_state = screech
+        screech.follow_up_state = clamp
+        initial = screech if self.scream_first else clamp
+        return MonsterMoveStateMachine([clamp, screech], initial)
+
+    def _clamp_move(self, targets: List[Creature]) -> None:
+        for _ in range(2):
+            for target in targets:
+                self.attack(target, self.clamp_damage)
+
+    def _screech_move(self, targets: List[Creature]) -> None:
+        self.add_status_to_player_discard("dazed", 3)
+
+
+class FatGremlin(MonsterModel):
+    """뚱보 그렘린 — HP 13~17. 소환 첫 턴 대기 후 도주."""
+    monster_id = "fat_gremlin"
+    title = "Fat Gremlin"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 13
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 17
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        spawned = MoveState("SPAWNED_MOVE", self._spawned_move, Intent(IntentType.STUN))
+        flee = MoveState("FLEE_MOVE", self._flee_move, Intent(IntentType.ESCAPE))
+        spawned.follow_up_state = flee
+        flee.follow_up_state = flee
+        return MonsterMoveStateMachine([spawned, flee], spawned)
+
+    def _spawned_move(self, targets: List[Creature]) -> None:
+        pass
+
+    def _flee_move(self, targets: List[Creature]) -> None:
+        self.escape()
+
+
+# ── HP만 확정, 행동은 단순화된 몬스터 (TODO: 디컴파일 행동 이식) ──
+
+class Parafright(MonsterModel):
+    """파라프라이트 — HP 21 (행동 단순화)."""
+    monster_id = "parafright"
+    title = "Parafright"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 21
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        atk = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=3))
+        atk.follow_up_state = atk
+        return MonsterMoveStateMachine([atk], atk)
+
+    def _attack_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, 3)
+
+
+class EyeWithTeeth(MonsterModel):
+    """이빨 달린 눈 — HP 6 (행동 단순화)."""
+    monster_id = "eye_with_teeth"
+    title = "Eye With Teeth"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 6
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        bite = MoveState("BITE", self._bite_move, Intent(IntentType.ATTACK, damage=2))
+        bite.follow_up_state = bite
+        return MonsterMoveStateMachine([bite], bite)
+
+    def _bite_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, 2)
+
+
+class BattleFriendV1(MonsterModel):
+    """전투 친구 V1 — HP 75 (테스트 지원, 행동 단순화)."""
+    monster_id = "battle_friend_v1"
+    title = "Battle Friend V1"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 75
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        support = MoveState("SUPPORT", self._support_move, Intent(IntentType.BUFF))
+        atk = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=8))
+        support.follow_up_state = atk
+        atk.follow_up_state = support
+        return MonsterMoveStateMachine([support, atk], support)
+
+    def _support_move(self, targets: List[Creature]) -> None:
+        self.gain_block(10)
+
+    def _attack_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, 8)
+
+
+class BattleFriendV2(MonsterModel):
+    """전투 친구 V2 — HP 150 (테스트 지원, 행동 단순화)."""
+    monster_id = "battle_friend_v2"
+    title = "Battle Friend V2"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 150
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        support = MoveState("SUPPORT", self._support_move, Intent(IntentType.BUFF))
+        atk = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=16))
+        support.follow_up_state = atk
+        atk.follow_up_state = support
+        return MonsterMoveStateMachine([support, atk], support)
+
+    def _support_move(self, targets: List[Creature]) -> None:
+        self.gain_block(20)
+
+    def _attack_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, 16)
+
+
+MONSTER_REGISTRY = {
+    "big_dummy": BigDummy,
+    "single_attack": SingleAttackMoveMonster,
+    "multi_attack": MultiAttackMoveMonster,
+    "twig_slime_s": TwigSlimeS,
+    "twig_slime_m": TwigSlimeM,
+    "stabbot": Stabbot,
+    "zapbot": Zapbot,
+    "guardbot": Guardbot,
+    "axe_ruby_raider": AxeRubyRaider,
+    "flail_knight": FlailKnight,
+    "damp_cultist": DampCultist,
+    "chomper": Chomper,
+    "fat_gremlin": FatGremlin,
+    "parafright": Parafright,
+    "eye_with_teeth": EyeWithTeeth,
+    "battle_friend_v1": BattleFriendV1,
+    "battle_friend_v2": BattleFriendV2,
+}
+
+
+def create_monster(monster_id: str) -> Optional[MonsterModel]:
+    """몬스터 생성."""
+    cls = MONSTER_REGISTRY.get(monster_id)
+    return cls() if cls else None

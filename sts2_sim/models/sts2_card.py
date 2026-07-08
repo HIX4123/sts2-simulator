@@ -55,6 +55,7 @@ class STS2Card:
     cost: int = 0
     star_cost: int = 0      # Regent 전용: 카드 플레이에 필요한 Stars
     exhausts: bool = False
+    playable: bool = True   # Dazed 등 사용 불가 카드는 False
 
     def __init__(self):
         self.upgraded = False
@@ -328,6 +329,34 @@ class Venerate(STS2Card):
 
 
 # ══════════════════════════════════════════
+# 상태이상 카드 (몬스터가 덱에 삽입)
+# ══════════════════════════════════════════
+
+class Dazed(STS2Card):
+    """멍함 — 사용 불가, 에테리얼 (Chomper SCREECH 등)."""
+    card_id = "dazed"
+    name = "Dazed"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 0
+    playable = False
+
+    def __init__(self):
+        super().__init__()
+        self.is_ethereal = True
+
+
+class Slimed(STS2Card):
+    """슬라임 범벅 — 1코스트, 효과 없음, 소모 (TwigSlimeM STICKY_SHOT 등)."""
+    card_id = "slimed"
+    name = "Slimed"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 1
+    exhausts = True
+
+
+# ══════════════════════════════════════════
 # 카드 팩토리
 # ══════════════════════════════════════════
 
@@ -352,6 +381,9 @@ CARD_REGISTRY = {
     # Regent
     "falling_star": FallingStar,
     "venerate": Venerate,
+    # 상태이상
+    "dazed": Dazed,
+    "slimed": Slimed,
 }
 
 

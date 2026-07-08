@@ -43,9 +43,16 @@ class Creature:
     # 파워
     # ──────────────────────────────────────────
 
-    def apply_power(self, power: "STS2Power") -> None:
-        """파워 적용 (동일 ID면 스택)."""
+    def apply_power(self, power: "STS2Power") -> bool:
+        """파워 적용 (동일 ID면 스택). 디버프는 Artifact가 1회 무효화."""
+        if power.is_debuff and self.get_power_amount("artifact") > 0:
+            artifact = self._powers["artifact"]
+            artifact.amount -= 1
+            if artifact.amount <= 0:
+                artifact.remove()
+            return False
         power.apply(self)
+        return True
 
     def has_power(self, power_id: str) -> bool:
         return power_id in self._powers and self._powers[power_id].amount != 0

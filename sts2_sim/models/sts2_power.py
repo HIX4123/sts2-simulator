@@ -292,6 +292,13 @@ class Focus(STS2Power):
     is_debuff = False
 
 
+class Artifact(STS2Power):
+    """아티팩트 — 디버프를 1회 무효화 (스택 소모). Creature.apply_power에서 처리."""
+    power_id = "artifact"
+    name = "Artifact"
+    is_debuff = False
+
+
 # ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
@@ -299,6 +306,7 @@ class Focus(STS2Power):
 POWER_REGISTRY = {
     "strength": Strength,
     "focus": Focus,
+    "artifact": Artifact,
     "dexterity": Dexterity,
     "vulnerable": Vulnerable,
     "weak": Weak,

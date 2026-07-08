@@ -11,7 +11,7 @@ from sts2_sim.entities.sts2_character import (
     Ironclad, Silent, Defect, Necrobinder, Regent, create_character
 )
 from sts2_sim.entities.sts2_monster import (
-    FlailKnight, Looter, ShelledParasite, GremlinWizard, Cultist
+    FlailKnight, Zapbot, Guardbot, DampCultist, Chomper, IntentType
 )
 
 
@@ -162,12 +162,13 @@ def test_additional_monsters():
     """추가 몬스터 테스트."""
     print("\n=== 추가 몬스터 ===\n")
 
+    # 디컴파일 실제 수치 (Ascension 미적용 기본값)
     monsters = [
-        (FlailKnight(), "Flail Knight", 45, 50),
-        (Looter(), "Looter", 38, 42),
-        (ShelledParasite(), "Shelled Parasite", 16, 20),
-        (GremlinWizard(), "Gremlin Wizard", 28, 32),
-        (Cultist(), "Cultist", 48, 55),
+        (FlailKnight(), "Flail Knight", 101, 101),
+        (Zapbot(), "Zapbot", 18, 23),
+        (Guardbot(), "Guardbot", 16, 20),
+        (DampCultist(), "Damp Cultist", 51, 53),
+        (Chomper(), "Chomper", 60, 64),
     ]
 
     for monster, name, min_hp, max_hp in monsters:
@@ -179,32 +180,46 @@ def test_additional_monsters():
         intent = monster.get_current_intent()
         print(f"✅ {name}: HP {monster.current_hp}, Intent: {intent.intent_type.name}")
 
-    print(f"\n✅ 총 {len(monsters)}개 추가 몬스터")
+    print(f"\n✅ 총 {len(monsters)}개 실전 몬스터 (실제 수치)")
 
 
 def test_monster_combat():
     """몬스터 전투 시뮬레이션."""
     print("\n=== 몬스터 전투 시뮬레이션 ===\n")
 
-    player = MockCreature("Player", max_hp=100)
-    cultist = Cultist()
+    # DampCultist: INCANTATION(의식+5) → DARK_STRIKE(1딜) 반복
+    cultist = DampCultist()
     cultist.setup_for_combat(None)
 
-    # Cultist 첫 행동 (ritual)
     intent_1 = cultist.get_current_intent()
-    print(f"Turn 1: Cultist 인텐트: {intent_1.intent_type.name}")
+    assert intent_1.intent_type == IntentType.BUFF
+    print(f"Turn 1: DampCultist 인텐트: {intent_1.intent_type.name} (INCANTATION)")
 
-    # 상태 전환
     cultist._move_state_machine.advance_state()
     intent_2 = cultist.get_current_intent()
-    print(f"Turn 2: Cultist 인텐트: {intent_2.intent_type.name}, 데미지: {intent_2.damage}")
-    assert intent_2.intent_type.name == "ATTACK"
+    assert intent_2.intent_type == IntentType.ATTACK and intent_2.damage == 1
+    print(f"Turn 2: DampCultist 인텐트: {intent_2.intent_type.name}, 데미지: {intent_2.damage}")
 
     cultist._move_state_machine.advance_state()
     intent_3 = cultist.get_current_intent()
-    print(f"Turn 3: Cultist 인텐트: {intent_3.intent_type.name} (다시 반복)")
+    assert intent_3.intent_type == IntentType.ATTACK
+    print(f"Turn 3: DampCultist 인텐트: {intent_3.intent_type.name} (DARK_STRIKE 반복)")
 
-    print("✅ Cultist 상태 전환 정상 작동")
+    # Ritual 파워 동작: 턴 시작마다 힘 +5
+    cultist2 = DampCultist()
+    cultist2.setup_for_combat(None)
+    cultist2.take_turn([])  # INCANTATION → Ritual(5)
+    assert cultist2.get_power_amount("ritual") == 5
+    ritual = cultist2._powers["ritual"]
+    ritual.on_turn_start()
+    assert cultist2.get_power_amount("strength") == 5
+    print("✅ DampCultist: Ritual(5) → 턴 시작 힘 +5")
+
+    # Chomper: 개전 시 Artifact 2
+    chomper = Chomper()
+    chomper.setup_for_combat(None)
+    assert chomper.get_power_amount("artifact") == 2
+    print("✅ Chomper: 개전 시 Artifact 2 (디버프 2회 무효)")
 
 
 def main():
@@ -217,17 +232,11 @@ def main():
     print("\n" + "="*60)
     print("✅ Phase 2 모든 테스트 통과!")
     print("="*60)
-    print("\n📊 Phase 2 구현 현황:")
-    print("  ✅ 렐릭 시스템: 19개 렐릭")
-    print("  ✅ 캐릭터 시스템: 4개 캐릭터 (Ironclad, Silent, Defect, Watcher)")
-    print("  ✅ 추가 몬스터: 5개 (총 16개)")
-    print("  ✅ 캐릭터별 스타트 덱/렐릭 정의")
-    print("\n📈 누적 구현:")
-    print("  - 몬스터: 16개")
-    print("  - 파워: 14개")
-    print("  - 카드: 10개")
-    print("  - 렐릭: 19개")
-    print("  - 캐릭터: 4개")
+    print("\n📊 구현 현황:")
+    print("  ✅ 렐릭 시스템 (스타터/Common/Uncommon/Rare/Boss)")
+    print("  ✅ 실제 STS2 캐릭터 5종 (Ironclad/Silent/Defect/Necrobinder/Regent)")
+    print("  ✅ 실전 몬스터 (디컴파일 수치): FlailKnight/Zapbot/Guardbot/DampCultist/Chomper")
+    print("  ✅ Ritual/Artifact 파워 동작 검증")
 
 
 if __name__ == "__main__":
