@@ -14,6 +14,8 @@ class STS2Power:
     power_id: str = "unknown_power"
     name: str = "Unknown Power"
     is_debuff: bool = False
+    # 데미지 수정 방향: "outgoing"(공격자 측) / "incoming"(피격자 측) / None
+    damage_side: Optional[str] = None
 
     def __init__(self, amount: int = 0):
         self.amount = amount
@@ -59,6 +61,7 @@ class Strength(STS2Power):
     power_id = "strength"
     name = "Strength"
     is_debuff = False
+    damage_side = "outgoing"
 
     def modify_damage(self, amount: int, is_attack: bool = True) -> int:
         """공격 데미지에 strength 추가."""
@@ -83,6 +86,7 @@ class Vulnerable(STS2Power):
     power_id = "vulnerable"
     name = "Vulnerable"
     is_debuff = True
+    damage_side = "incoming"
 
     def __init__(self, amount: int = 0):
         super().__init__(amount)
@@ -106,6 +110,7 @@ class Weak(STS2Power):
     power_id = "weak"
     name = "Weak"
     is_debuff = True
+    damage_side = "outgoing"
 
     def __init__(self, amount: int = 0):
         super().__init__(amount)
@@ -280,12 +285,20 @@ class CurlUpPower(STS2Power):
             self.remove()
 
 
+class Focus(STS2Power):
+    """집중 — 오브 패시브/이보크 값 증가 (Defect). 음수 가능."""
+    power_id = "focus"
+    name = "Focus"
+    is_debuff = False
+
+
 # ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
 POWER_REGISTRY = {
     "strength": Strength,
+    "focus": Focus,
     "dexterity": Dexterity,
     "vulnerable": Vulnerable,
     "weak": Weak,

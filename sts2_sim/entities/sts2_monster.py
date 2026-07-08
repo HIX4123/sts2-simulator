@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Optional, List, Callable, Dict, Any
 import asyncio
 
 if TYPE_CHECKING:
-    from sts2_sim.core.combat_state import CombatState
+    from sts2_sim.core.combat import CombatState
     from sts2_sim.entities.creature import Creature
     from sts2_sim.models.sts2_power import STS2Power
 
