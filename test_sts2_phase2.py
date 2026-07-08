@@ -4,11 +4,11 @@ STS2 Phase 2 통합 테스트.
 렐릭 시스템 + 캐릭터 시스템 + 추가 몬스터.
 """
 from sts2_sim.models.sts2_relic import (
-    BurningBlood, RingOfSnake, Akabeko, Anchor, Cloak,
+    BurningBlood, RingOfTheSnake, Akabeko, Anchor, Cloak,
     create_relic
 )
 from sts2_sim.entities.sts2_character import (
-    Ironclad, Silent, Defect, Watcher, create_character
+    Ironclad, Silent, Defect, Necrobinder, Regent, create_character
 )
 from sts2_sim.entities.sts2_monster import (
     FlailKnight, Looter, ShelledParasite, GremlinWizard, Cultist
@@ -69,10 +69,12 @@ def test_relics():
     assert player.current_hp == 56, f"Burning Blood 회복 실패: {player.current_hp} != 56"
     print(f"   전투 승리 후 HP 회복: {player}")
 
-    # Ring of Snake
-    rs = RingOfSnake()
+    # Ring of the Snake — 첫 턴 드로우 +2 (디컴파일 실제 동작)
+    rs = RingOfTheSnake()
     rs.on_equip(player)
-    print(f"✅ Ring of Snake 장착: {rs}")
+    assert rs.modify_hand_draw(5, turn=1) == 7
+    assert rs.modify_hand_draw(5, turn=2) == 5
+    print(f"✅ Ring of the Snake 장착: 첫 턴 드로우 5→7")
 
     # Anchor — 최대 HP +10
     player2 = MockCreature("Player2", max_hp=100)
@@ -110,33 +112,50 @@ def test_characters():
     assert "burning_blood" in relics
     print(f"✅ Ironclad: {ironclad}, 덱 크기: {len(deck)}, 렐릭: {relics}")
 
-    # Silent
+    # Silent — STS2 실제 덱: 12장 (Strike×5, Defend×5, Neutralize, Survivor)
     silent = Silent()
     deck = silent.get_start_deck()
     relics = silent.get_start_relics()
-    assert len(deck) == 10, f"Silent 덱 크기 실패"
-    assert "ring_of_snake" in relics
+    assert len(deck) == 12, f"Silent 덱 크기 실패: {len(deck)} != 12"
+    assert "ring_of_the_snake" in relics
+    assert "neutralize" in deck and "survivor" in deck
     print(f"✅ Silent: {silent}, 덱 크기: {len(deck)}, 렐릭: {relics}")
 
-    # Defect
+    # Defect — STS2 실제 덱: Zap/Dualcast, CrackedCore, 오브 슬롯 3
     defect = Defect()
-    print(f"✅ Defect: {defect}")
+    deck = defect.get_start_deck()
+    assert "zap" in deck and "dualcast" in deck
+    assert "cracked_core" in defect.get_start_relics()
+    assert defect.base_orb_slot_count == 3
+    print(f"✅ Defect: {defect}, 오브 슬롯: {defect.base_orb_slot_count}")
 
-    # Watcher
-    watcher = Watcher()
-    print(f"✅ Watcher: {watcher}")
+    # Necrobinder (STS2 신규) — HP 66, Osty 소환수
+    necro = Necrobinder()
+    assert necro.max_hp == 66
+    assert "bodyguard" in necro.get_start_deck() and "unleash" in necro.get_start_deck()
+    assert "bound_phylactery" in necro.get_start_relics()
+    print(f"✅ Necrobinder: {necro}")
+
+    # Regent (STS2 신규) — HP 75, Stars 자원
+    regent = Regent()
+    assert regent.max_hp == 75
+    assert "falling_star" in regent.get_start_deck() and "venerate" in regent.get_start_deck()
+    assert "divine_right" in regent.get_start_relics()
+    print(f"✅ Regent: {regent}")
 
     # 캐릭터 팩토리
     char = create_character("ironclad")
     assert char is not None and char.name == "Ironclad"
     print(f"✅ 캐릭터 팩토리: ironclad → {char}")
 
-    # 모든 캐릭터
-    for char_id in ["ironclad", "silent", "defect", "watcher"]:
+    # 모든 캐릭터 (실제 STS2 로스터 — Watcher 없음)
+    expected_deck_sizes = {"ironclad": 10, "silent": 12, "defect": 10, "necrobinder": 10, "regent": 10}
+    for char_id, deck_size in expected_deck_sizes.items():
         char = create_character(char_id)
         assert char is not None
-        assert len(char.get_start_deck()) == 10
-    print(f"✅ 모든 캐릭터 생성 가능: 4개")
+        assert len(char.get_start_deck()) == deck_size
+    assert create_character("watcher") is None, "Watcher는 STS2에 없어야 함"
+    print(f"✅ 실제 STS2 로스터 5개 캐릭터 생성 가능 (Watcher 없음 확인)")
 
 
 def test_additional_monsters():

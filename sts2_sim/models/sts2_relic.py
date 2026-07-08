@@ -38,9 +38,17 @@ class STS2Relic:
         """렐릭 제거 시."""
         self.owner = None
 
-    def on_combat_start(self) -> None:
+    def on_combat_start(self, combat=None) -> None:
         """전투 시작 시."""
         pass
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        """플레이어 턴 시작 시."""
+        pass
+
+    def modify_hand_draw(self, count: int, turn: int = 1) -> int:
+        """턴 시작 드로우 수 수정."""
+        return count
 
     def on_combat_end(self, victory: bool) -> None:
         """전투 종료 시."""
@@ -87,18 +95,66 @@ class BurningBlood(STS2Relic):
             self.owner.heal(6)
 
 
-class RingOfSnake(STS2Relic):
-    """뱀 반지 — Silent 스타터."""
-    relic_id = "ring_of_snake"
+class RingOfTheSnake(STS2Relic):
+    """뱀의 반지 — Silent 스타터. 첫 턴 드로우 +2 (디컴파일: ModifyHandDraw)."""
+    relic_id = "ring_of_the_snake"
     name = "Ring of the Snake"
     rarity = RelicRarity.STARTER
-    description = "매 턴 시작 시 카드 1 드로우"
+    description = "전투 첫 턴에 카드 2장 추가 드로우"
 
-    def on_turn_start(self) -> None:
-        """매 턴 시작 시 카드 1 드로우."""
-        if self.owner:
-            # TODO: draw_card 호출
-            self.counter += 1
+    def modify_hand_draw(self, count: int, turn: int = 1) -> int:
+        if turn <= 1:
+            return count + 2
+        return count
+
+
+class CrackedCore(STS2Relic):
+    """금간 코어 — Defect 스타터. 첫 턴에 라이트닝 오브 1개 채널."""
+    relic_id = "cracked_core"
+    name = "Cracked Core"
+    rarity = RelicRarity.STARTER
+    description = "전투 첫 턴에 라이트닝 오브 채널"
+
+    def on_combat_start(self, combat=None) -> None:
+        from sts2_sim.models.sts2_orb import LightningOrb
+        if self.owner is None:
+            return
+        queue = getattr(self.owner, "orb_queue", None)
+        if queue is not None:
+            queue.channel(LightningOrb(), self.owner, combat)
+
+
+class BoundPhylactery(STS2Relic):
+    """묶인 성물함 — Necrobinder 스타터. 전투 시작 및 매 턴 Osty 1 소환."""
+    relic_id = "bound_phylactery"
+    name = "Bound Phylactery"
+    rarity = RelicRarity.STARTER
+    description = "전투 시작 시 및 2턴째부터 매 턴 Osty 1 소환"
+
+    def _summon(self) -> None:
+        summon = getattr(self.owner, "summon_osty", None) if self.owner else None
+        if summon:
+            summon(1)
+
+    def on_combat_start(self, combat=None) -> None:
+        self._summon()
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        if turn > 1:
+            self._summon()
+
+
+class DivineRight(STS2Relic):
+    """신성한 권리 — Regent 스타터. 전투 입장 시 별 3 획득."""
+    relic_id = "divine_right"
+    name = "Divine Right"
+    rarity = RelicRarity.STARTER
+    description = "전투 입장 시 Stars 3 획득"
+
+    def on_combat_start(self, combat=None) -> None:
+        gain = getattr(self.owner, "gain_stars", None) if self.owner else None
+        if gain:
+            gain(3)
 
 
 # ══════════════════════════════════════════
@@ -171,7 +227,7 @@ class Centipede(STS2Relic):
     rarity = RelicRarity.COMMON
     description = "매 턴 시작 시 20 증가량 손실 시 1 블록 획득"
 
-    def on_turn_start(self) -> None:
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
         """턴 시작 시."""
         # TODO: 턴 시작 HP 손실 감지
         pass
@@ -225,7 +281,7 @@ class EnchanterMask(STS2Relic):
     rarity = RelicRarity.COMMON
     description = "전투 시작 시 1 파워 생성"
 
-    def on_combat_start(self) -> None:
+    def on_combat_start(self, combat=None) -> None:
         """전투 시작 시."""
         self.counter += 1
 
@@ -270,7 +326,7 @@ class MercuryHourglass(STS2Relic):
     rarity = RelicRarity.UNCOMMON
     description = "전투 시작 시 턴 스킵"
 
-    def on_combat_start(self) -> None:
+    def on_combat_start(self, combat=None) -> None:
         """전투 시작 시 턴 스킵."""
         # TODO: 턴 스킵 로직
         self.counter += 1
@@ -325,7 +381,7 @@ class TungstenRod(STS2Relic):
     rarity = RelicRarity.RARE
     description = "매 턴 시작 시 방어력 +3"
 
-    def on_turn_start(self) -> None:
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
         """턴 시작 시."""
         if self.owner:
             self.owner.gain_block(3)
@@ -352,7 +408,10 @@ class SpikedDefense(STS2Relic):
 RELIC_REGISTRY = {
     # Starter
     "burning_blood": BurningBlood,
-    "ring_of_snake": RingOfSnake,
+    "ring_of_the_snake": RingOfTheSnake,
+    "cracked_core": CrackedCore,
+    "bound_phylactery": BoundPhylactery,
+    "divine_right": DivineRight,
     # Common
     "akabeko": Akabeko,
     "anchor": Anchor,

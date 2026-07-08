@@ -10,7 +10,7 @@ from sts2_sim.models.sts2_power import (
     Strength, Vulnerable, Weak, Burning, create_power
 )
 from sts2_sim.models.sts2_card import (
-    Strike, Defend, Cleave, create_card
+    Strike, Defend, Shiv, create_card
 )
 
 
@@ -138,34 +138,33 @@ def test_cards():
     player = MockCreature("Player", max_hp=100)
     enemy = MockCreature("Enemy", max_hp=50)
 
-    # Strike 카드
+    # Strike 카드 (STS2 실제값: 6딜)
     strike = Strike()
     assert strike.name == "Strike"
     assert strike.cost == 1
     strike.use(player, [enemy])
-    assert enemy.current_hp == 45, f"Strike 피해 계산 실패: {enemy.current_hp} != 45"
-    print(f"✅ Strike: {enemy} (5 데미지)")
+    assert enemy.current_hp == 44, f"Strike 피해 계산 실패: {enemy.current_hp} != 44"
+    print(f"✅ Strike: {enemy} (6 데미지)")
 
-    # Defend 카드
+    # Defend 카드 (STS2 실제값: 5블록)
     defend = Defend()
     assert defend.name == "Defend"
     defend.use(player, [])
-    assert player.block == 7, f"Defend 블록 실패: {player.block} != 7"
-    print(f"✅ Defend: Player 블록 +7 (현재: {player.block})")
+    assert player.block == 5, f"Defend 블록 실패: {player.block} != 5"
+    print(f"✅ Defend: Player 블록 +5 (현재: {player.block})")
 
-    # Cleave 카드 (다중 적 공격)
-    cleave = Cleave()
+    # Shiv 카드 (0코스트 4딜, 소모)
+    shiv = Shiv()
     enemy1 = MockCreature("Enemy1", max_hp=50)
-    enemy2 = MockCreature("Enemy2", max_hp=50)
-    cleave.use(player, [enemy1, enemy2])
-    assert enemy1.current_hp == 36, f"Cleave enemy1 피해 실패"
-    assert enemy2.current_hp == 36, f"Cleave enemy2 피해 실패"
-    print(f"✅ Cleave: 2명의 적에게 14 데미지")
+    shiv.use(player, [enemy1])
+    assert shiv.cost == 0 and shiv.exhausts
+    assert enemy1.current_hp == 46, f"Shiv 피해 실패: {enemy1.current_hp} != 46"
+    print(f"✅ Shiv: 4 데미지, 소모")
 
     # 카드 생성 팩토리
-    card = create_card("heavy_blade")
-    assert card is not None and card.name == "Heavy Blade"
-    print(f"✅ 카드 팩토리: heavy_blade → {card}")
+    card = create_card("neutralize")
+    assert card is not None and card.name == "Neutralize"
+    print(f"✅ 카드 팩토리: neutralize → {card}")
 
     # 업그레이드
     card.upgrade()
