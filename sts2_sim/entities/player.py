@@ -17,9 +17,13 @@ if TYPE_CHECKING:
 
 
 class Player(Creature):
-    """전투 플레이어. 캐릭터의 현재 HP를 이어받는다."""
+    """전투 플레이어. 캐릭터의 현재 HP를 이어받는다.
 
-    def __init__(self, character: "STS2Character"):
+    deck: 런 레벨 덱(카드 인스턴스 리스트). 지정하면 그대로 사용해
+    카드 업그레이드 등이 런 전체에 유지된다. 미지정 시 시작 덱 생성.
+    """
+
+    def __init__(self, character: "STS2Character", deck: Optional[List["STS2Card"]] = None):
         super().__init__(character.name, character.max_hp)
         self._current_hp = character.current_hp
         self.character = character
@@ -36,11 +40,14 @@ class Player(Creature):
                 relic.on_equip(self)
                 self.relics.append(relic)
 
-        self.master_deck: List["STS2Card"] = []
-        for card_id in character.get_start_deck():
-            card = create_card(card_id)
-            if card:
-                self.master_deck.append(card)
+        if deck is not None:
+            self.master_deck: List["STS2Card"] = deck
+        else:
+            self.master_deck = []
+            for card_id in character.get_start_deck():
+                card = create_card(card_id)
+                if card:
+                    self.master_deck.append(card)
 
     def gain_energy(self, amount: int) -> None:
         self.energy += amount

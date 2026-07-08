@@ -31,6 +31,13 @@ ENCOUNTERS: Dict[str, Callable[[], List[MonsterModel]]] = {
 NORMAL_POOL = ["slimes_weak", "cultists_normal", "chompers_normal", "bots_normal", "raiders_normal"]
 ELITE_POOL = ["knights_elite"]
 
+# 난이도 단계별 풀 (런 진행용)
+# chompers_normal(Artifact 2 + 16딜/턴 ×2)과 cultists_normal(Ritual 5 ×2 램핑)은
+# 스타터 수준 덱으로는 사실상 승산이 없어 HARD 티어로 분리 — 성장한 덱 전용
+EASY_POOL = ["slimes_weak", "bots_normal"]
+MEDIUM_POOL = ["raiders_normal"]
+HARD_POOL = ["cultists_normal", "chompers_normal"]
+
 
 def make_encounter(encounter_id: str) -> List[MonsterModel]:
     """인카운터 ID로 몬스터 목록 생성."""
@@ -43,4 +50,14 @@ def make_encounter(encounter_id: str) -> List[MonsterModel]:
 def random_encounter(rng: random.Random, elite: bool = False) -> List[MonsterModel]:
     """풀에서 무작위 인카운터 생성."""
     pool = ELITE_POOL if elite else NORMAL_POOL
+    return make_encounter(rng.choice(pool))
+
+
+def random_encounter_from(rng: random.Random, pool: List[str]) -> List[MonsterModel]:
+    """지정한 풀에서 무작위 인카운터 생성."""
+    return make_encounter(rng.choice(pool))
+
+
+def random_encounter_from(rng: random.Random, pool: List[str]) -> List[MonsterModel]:
+    """지정한 풀에서 무작위 인카운터 생성."""
     return make_encounter(rng.choice(pool))
