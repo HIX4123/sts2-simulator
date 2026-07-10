@@ -1,247 +1,92 @@
-# STS2 시뮬레이터 — Phase 1 구현 완료 보고서
+# STS2 시뮬레이터 — 구현 현황
 
-## 📋 개요
-STS2(Slay the Spire 2) 헤드리스 Python 시뮬레이터의 **Phase 1** 구현 완료.
-디컬파일된 `sts2.dll` 데이터를 기반으로 STS2 스타일의 게임 엔진 구축.
+`sts2.dll` 디컴파일 데이터 기반 헤드리스 Slay the Spire 2 시뮬레이터.
+모든 수치는 `decompiled/MegaCrit.Sts2.Core.*`에서 추출한 실제값 (Ascension 미적용 기본값).
 
-## ✅ Phase 1 완성 항목
+## 📊 규모 요약
 
-### 1. 몬스터 시스템 (`sts2_sim/entities/sts2_monster.py`)
-- **MonsterModel** 베이스 클래스 (STS2 아키텍처 준수)
-- **MonsterMoveStateMachine** — 상태 머신 기반 행동 시스템
-  - 단순 반복 행동 (e.g., TwigSlimeS)
-  - 복잡한 상태 전환 (e.g., AxeRubyRaider: SWING_1 → SWING_2 → BIG_SWING)
-  - Intent 시스템 (UI 표시 정보)
+| 시스템 | 개수 | 비고 |
+|--------|------|------|
+| 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
+| 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
+| 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
+| 카드 | 16종 | 스타터 전량 + 상태이상 (STS2 전체 593종) |
+| 파워 | 18종 | Plating/Artifact/Tangled 등 전투 배선 완료 |
+| 렐릭 | 22종 | 스타터 5종은 실제 동작 |
+| 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue |
+| 테스트 | 7개 스위트 | 전부 통과, 시드 재현성 보장 |
 
-#### 구현된 몬스터 (11개)
-| 몬스터 | HP | 특징 |
-|--------|-----|------|
-| BigDummy | 9999 | 테스트용 더미 |
-| SingleAttackMoveMonster | 999 | 단순 공격 |
-| MultiAttackMoveMonster | 999 | 다중 공격 |
-| TwigSlimeS | 11 | 단순 택클 |
-| Stabbot | 23 | 공격 + 디버프 |
-| AxeRubyRaider | 22 | 상태 전환 (SWING1→SWING2→BIGSWING) |
-| Parafright | 21 | 공격 |
-| EyeWithTeeth | 6 | 소형 적 |
-| BattleFriendV1 | 75 | 지원/공격 반복 |
-| BattleFriendV2 | 150 | 강화된 지원/공격 |
-| Zapbot | 30 | 전기 공격 |
-| Guardbot | 40 | 공격/방어 반복 |
+## 🏗️ 구조
 
-### 2. 파워 시스템 (`sts2_sim/models/sts2_power.py`)
-- **STS2Power** 베이스 클래스
-- 파워 팩토리 패턴 (동적 생성)
-- 데미지/블록 수정 체계
-
-#### 구현된 파워 (14개)
-| 파워 | 타입 | 효과 |
-|------|------|------|
-| Strength | 버프 | 공격 데미지 +amount |
-| Dexterity | 버프 | 블록 +amount |
-| Vulnerable | 디버프 | 받는 데미지 ×1.5 (지속) |
-| Weak | 디버프 | 주는 데미지 ×0.75 (지속) |
-| Frail | 디버프 | 받는 블록 ×0.75 (지속) |
-| Burning | 디버프 | 턴 종료 시 HP -amount |
-| Poison | 디버프 | 턴 종료 시 HP -amount (amount 감소) |
-| Thorns | 버프 | 피격 시 반격 |
-| Ritual | 버프 | 턴 시작 시 Strength +amount 부여 |
-| Metallicize | 버프 | 턴 종료 시 블록 +amount 획득 |
-| HexPower | 디버프 | 플레이어 카드 Ethereal 부여 (Phase 3) |
-| TangledPower | 디버프 | 공격 카드 플레이 차단 (Phase 3) |
-| ShackledPower | 디버프 | 모든 카드 플레이 차단 (Phase 3) |
-| CurlUpPower | 버프 | 첫 피격 시 블록 획득 후 제거 (Phase 3) |
-
-### 3. 카드 시스템 (`sts2_sim/models/sts2_card.py`)
-- **STS2Card** 베이스 클래스
-- CardType, Rarity 열거형
-- 카드 팩토리 패턴
-
-#### 구현된 카드 (10개)
-| 카드 | 타입 | 비용 | 효과 |
-|------|------|------|------|
-| Strike | 공격 | 1 | 데미지 5(업그레이드: 6) |
-| Defend | 스킬 | 1 | 블록 7(업그레이드: 8) |
-| Bash | 공격 | 2 | 데미지 8(업그레이드: 10) + Vulnerable |
-| Cleave | 공격 | 1 | 모든 적에게 데미지 14(업그레이드: 16) |
-| HeavyBlade | 공격 | 3 | 데미지 29(업그레이드: 32) |
-| Pummel | 공격 | 1 | 데미지 3×4(업그레이드: 4×4) |
-| Shiv | 공격 | 0 | 데미지 4(업그레이드: 5), 소모 |
-| QuickSlash | 공격 | 1 | 데미지 12(업그레이드: 16) |
-| Acrobatics | 스킬 | 1 | 블록 7(업그레이드: 8) + 드로우 |
-| Deflect | 스킬 | 1 | 블록 3(업그레이드: 4) |
-
-## 🏗️ 아키텍처 설계
-
-### 몬스터 상태 머신 패턴
-```
-MonsterMoveStateMachine
-├─ states: List[MoveState]
-│  ├─ name: 행동 이름
-│  ├─ execute: Callable (비동기)
-│  ├─ intent: Intent (UI 정보)
-│  └─ follow_up_state: 다음 상태
-└─ current_state
-
-매 턴:
-  1. get_current_intent() → UI 표시
-  2. execute_move(targets) → 비동기 실행
-  3. advance_state() → 다음 상태로
-```
-
-### 파워 효과 체계
-```
-데미지 계산:
-  base_damage
-  → Strength 적용 (공격자)
-  → Weak 적용 (공격자, ×0.75)
-  → Vulnerable 적용 (피격자, ×1.5)
-  → 최종 데미지
-
-블록 계산:
-  base_block
-  → Dexterity 적용
-  → Frail 적용 (×0.75)
-  → 최종 블록
-```
-
-## 🧪 테스트 커버리지
-- ✅ 기본 몬스터 테스트 (11개)
-- ✅ 파워 수정 로직 (14개 파워)
-- ✅ 카드 사용 (10개 카드)
-- ✅ 몬스터 상태 전환 (AxeRubyRaider)
-- ✅ 통합 테스트 (몬스터 + 파워 + 카드)
-
-모든 테스트 통과 ✅
-
-## 📊 Phase 1 완성 현황
-
-| 항목 | 개수 | 상태 |
-|------|------|------|
-| 몬스터 | 11 | ✅ 완성 |
-| 파워 | 14 | ✅ 완성 |
-| 카드 | 10 | ✅ 완성 |
-| 렐릭 | 0 | ⏸️ Phase 2 |
-| 캐릭터 | 0 | ⏸️ Phase 2 |
-
----
-
-## ✅ Phase 2 완성 항목
-
-### 1. 렐릭 시스템 (`sts2_sim/models/sts2_relic.py`)
-- **STS2Relic** 베이스 클래스
-- 렐릭 팩토리 패턴
-- 렐릭 훅 시스템
-
-#### 구현된 렐릭 (19개)
-
-**Starter (2개)**
-| 렐릭 | 설명 |
-|------|------|
-| Burning Blood | 전투 승리 시 6 HP 회복 |
-| Ring of the Snake | 매 턴 시작 시 카드 1 드로우 |
-
-**Common (8개)**
-| 렐릭 | 효과 |
-|------|------|
-| Akabeko | 공격 카드 플레이 시 데미지 +1 |
-| Anchor | 최대 HP +10 |
-| Bronze Scale | 상태 이상 피해 20% 감소 |
-| Burning Skull | 공격 후 적에게 화상 부여 |
-| Centipede | 턴 시작 시 HP 감소 감지 시 블록 획득 |
-| Cloak | 스킬 카드 플레이 시 블록 +1 |
-| Courier | 전투 승리 후 카드 1 획득 |
-| Dream Catcher | 카드 업그레이드 시 비용 -1 |
-
-**Uncommon (5개)**
-| 렐릭 | 효과 |
-|------|------|
-| Fossilized Helix | 최대 HP +25 |
-| Matryoshka | 카드 3개 획득 시 골드 9 획득 |
-| Mercury Hourglass | 전투 시작 시 턴 스킵 |
-| Oddly Smooth Stone | 상태 이상 저항 10% |
-| Ornithopter | 최대 블록 +1 |
-
-**Rare (2개)**
-| 렐릭 | 효과 |
-|------|------|
-| Runic | 카드 획득 시 모든 카드 업그레이드 |
-| Tungsten Rod | 매 턴 시작 시 방어력 +3 |
-
-**Boss (1개)**
-| 렐릭 | 효과 |
-|------|------|
-| Spiked Defense | 블록 획득 시 공격자에게 피해 |
-
-**Enchanter Mask (1개)**
-| 렐릭 | 효과 |
-|------|------|
-| Enchanter's Mask | 전투 시작 시 파워 1 생성 |
-
-### 2. 캐릭터 시스템 (`sts2_sim/entities/sts2_character.py`)
-- **STS2Character** 베이스 클래스
-- 캐릭터별 스타트 덱/렐릭 정의
-- 캐릭터 팩토리 패턴
-
-#### 구현된 캐릭터 (4개)
-
-| 캐릭터 | HP | 스타트 덱 | 스타터 렐릭 |
-|--------|-----|----------|-----------|
-| Ironclad | 80 | Strike×5, Defend×4, Bash×1 | Burning Blood |
-| Silent | 70 | Strike×5, Defend×4, Shiv×1 | Ring of Snake |
-| Defect | 75 | Strike×5, Defend×4, Spark×1 | Courier |
-| Watcher | 72 | Strike×5, Defend×4, Eruption×1 | Empty Cage |
-
-### 3. 추가 몬스터 (5개)
-| 몬스터 | HP | 특징 |
-|--------|-----|------|
-| Flail Knight | 45-50 | 회초리 공격 |
-| Looter | 38-42 | 약탈 공격 (골드 감소) |
-| Shelled Parasite | 16-20 | 침 분사 + 블록 획득 |
-| Gremlin Wizard | 28-32 | 주문 시전 (파워 부여) |
-| Cultist | 48-55 | 상태 전환: Ritual → Attack → Ritual |
-
-## 📊 Phase 2 완성 현황
-
-| 항목 | 개수 | 상태 |
-|------|------|------|
-| 몬스터 | 16 | ✅ 완성 |
-| 파워 | 14 | ✅ 완성 |
-| 카드 | 10 | ✅ 완성 |
-| 렐릭 | 19 | ✅ 완성 |
-| 캐릭터 | 4 | ✅ 완성 |
-
-## 🚀 다음 단계 (Phase 3+)
-- **Phase 3**: Defect (Orb 시스템), Watcher (Stance 시스템), 더 많은 카드/렐릭
-- **Phase 4**: 맵 생성, 이벤트, 런 루프 통합
-- **Phase 5**: AI 정책, MCTS, 통계 분석
-
-## 🔧 파일 구조
 ```
 sts2_sim/
 ├─ entities/
-│  └─ sts2_monster.py       (몬스터 11개)
+│  ├─ creature.py        # 공유 데미지 파이프라인 (파워 수정, 블록, 피격 트리거)
+│  ├─ player.py          # 전투 플레이어 (에너지/Stars/Osty/오브/렐릭/덱)
+│  ├─ sts2_character.py  # 캐릭터 정의 (실제 시작 덱/렐릭/HP)
+│  ├─ sts2_monster.py    # MonsterModel + 상태 머신 + 기본 17종
+│  └─ monsters_extra.py  # Phase 6a 추가 17종
 ├─ models/
-│  ├─ sts2_power.py         (파워 14개)
-│  └─ sts2_card.py          (카드 10개)
-└─ test_sts2_*.py           (통합 테스트)
+│  ├─ sts2_power.py      # 파워 18종
+│  ├─ sts2_card.py       # 카드 16종
+│  ├─ sts2_relic.py      # 렐릭 22종
+│  └─ sts2_orb.py        # 오브 5종 + OrbQueue
+└─ core/
+   ├─ combat.py          # 턴 루프 + SimplePolicy
+   ├─ policy.py          # GreedyPolicy (인텐트 인지)
+   ├─ encounters.py      # 인카운터 팩토리 + 난이도 풀
+   ├─ run.py             # 런 루프 (보상/휴식/덱 성장)
+   └─ stats.py           # 통계 러너 CLI
 ```
 
-## 📝 명령어
+## 🎮 캐릭터 (디컴파일 Models.Characters 그대로)
 
-### 테스트 실행
-```bash
-python3 test_sts2_basic.py        # 기본 몬스터 테스트
-python3 test_sts2_integration.py  # 통합 테스트 (몬스터 + 파워 + 카드)
-```
+| 캐릭터 | HP | 시작 덱 | 스타터 렐릭 | 고유 메카닉 |
+|--------|----|---------|------------|------------|
+| Ironclad | 80 | Strike×5, Defend×4, Bash | Burning Blood | — |
+| Silent | 70 | Strike×5, Defend×5, Neutralize, Survivor (12장) | Ring of the Snake | — |
+| Defect | 75 | Strike×4, Defend×4, Zap, Dualcast | Cracked Core | 오브 슬롯 3 |
+| Necrobinder | 66 | Strike×4, Defend×4, Bodyguard, Unleash | Bound Phylactery | Osty 소환수 |
+| Regent | 75 | Strike×4, Defend×4, FallingStar, Venerate | Divine Right | Stars 자원 |
 
-### 디컬파일 데이터 분석
-```bash
-python3 bulk_extract_monsters.py  # 몬스터 메타데이터 추출
-python3 extract_sts2_data.py      # 전체 데이터 추출
-```
+※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
----
-**작성 일시**: 2026-07-07  
-**상태**: Phase 1 완료 ✅  
-**다음 리뷰**: Phase 2 계획 수립 시
+## 👹 몬스터 34종
+
+**기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
+TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
+Chomper, FatGremlin, Parafright, EyeWithTeeth, BattleFriendV1/V2
+
+**Phase 6a (monsters_extra.py):** LeafSlimeS/M, CalcifiedCultist, SpectralKnight,
+MagiKnight, Assassin/Brute/Tracker/CrossbowRubyRaider, SewerClam, SnappingJaxfruit,
+SneakyGremlin, Noisebot, LivingShield, Mawler, GlobeHead, VineShambler
+
+특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce), 조건 분기(LivingShield),
+도주(FatGremlin/SneakyGremlin 대기→행동), 상태이상 삽입(Dazed/Slimed), Ritual 램핑,
+Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
+
+## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
+
+| 인카운터 | 승률 | 티어 |
+|----------|------|------|
+| slimes_weak, bots_normal, gremlins_weak | 20/20 | EASY |
+| raiders/vine_shambler/sewer_clam/jaxfruit/cultists/mawler | 20/20 | MEDIUM |
+| chompers_normal | 1/20 | HARD |
+| globe_head_normal (HP 148) | 0/20 | HARD |
+| knights_elite (3기사, 총 HP 276) | 0/20 | ELITE |
+
+런 완주(7층, 엘리트 피날레)는 현 카드 풀 16종으로는 실제 3기사 엘리트를 넘기 어려움 —
+카드 풀 확대(Phase 6b)가 승률의 병목.
+
+## 🔬 생성 방법론 (Phase 6a)
+
+몬스터 17종은 멀티에이전트 파이프라인으로 이식:
+1. **이식 에이전트** — 디컴파일 .cs와 기존 패턴을 읽고 Python 클래스 생성
+2. **검증 에이전트** — 원본과 수치/상태그래프 적대 대조 (LeafSlimeS 시드 재현성 버그,
+   SpectralKnight CanRepeatXTimes 전개 오류를 잡아 수정)
+3. **수동 대조** — 세션 한도로 미검증된 13종을 원본 소스와 직접 대조 (전부 일치 확인)
+
+## 🚀 다음 단계
+
+ROADMAP.md의 Phase 6b+ 참조 — 몬스터 잔여 ~87종, 카드 풀 확대(593종),
+렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension, 실제 맵 그래프.
