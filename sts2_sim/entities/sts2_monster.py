@@ -85,13 +85,22 @@ class RandomBranchState(MonsterState):
 
 
 class MonsterMoveStateMachine:
-    """상태 머신: 몬스터의 행동 순서를 관리."""
+    """상태 머신: 몬스터의 행동 순서를 관리.
 
-    def __init__(self, states: List[MonsterState], initial_state: MoveState):
+    initial_state로 RandomBranchState도 허용 — setup_for_combat에서 rng 주입 후
+    resolve_initial()이 시드 rng로 첫 행동을 결정한다 (재현성 보장).
+    """
+
+    def __init__(self, states: List[MonsterState], initial_state: MonsterState):
         self.states = states
-        self.current_state: MoveState = initial_state
+        self.current_state: MonsterState = initial_state
         self.rng: random.Random = random.Random()
         self._last_move_name: Optional[str] = None
+
+    def resolve_initial(self) -> None:
+        """초기 상태가 RandomBranchState면 현재 rng로 해석."""
+        if isinstance(self.current_state, RandomBranchState):
+            self.current_state = self.current_state.resolve(self.rng, None)
 
     def get_current_intent(self) -> Intent:
         return self.current_state.intent
@@ -155,6 +164,7 @@ class MonsterModel(Creature):
         self._move_state_machine = self.generate_move_state_machine()
         if rng is not None:
             self._move_state_machine.rng = rng
+        self._move_state_machine.resolve_initial()
         self.after_added_to_room()
 
     def after_added_to_room(self) -> None:

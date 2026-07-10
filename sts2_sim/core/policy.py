@@ -79,10 +79,7 @@ class GreedyPolicy:
         if not enemies:
             return None
 
-        playable = [
-            c for c in combat.hand
-            if c.playable and c.cost <= player.energy and c.star_cost <= player.stars
-        ]
+        playable = [c for c in combat.hand if combat.is_card_playable(c)]
         if not playable:
             return None
 

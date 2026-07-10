@@ -299,6 +299,24 @@ class Artifact(STS2Power):
     is_debuff = False
 
 
+class Plating(STS2Power):
+    """도금 — 턴 종료마다 스택만큼 블록 획득, 비차단 피해를 받으면 스택 1 감소.
+    (디컴파일 PlatingPower — SewerClam 등)"""
+    power_id = "plating"
+    name = "Plating"
+    is_debuff = False
+
+    def on_turn_end(self) -> None:
+        if self.owner and self.amount > 0:
+            self.owner.gain_block(self.amount)
+
+    def on_take_damage(self, attacker, hp_lost: int) -> None:
+        if hp_lost > 0 and self.amount > 0:
+            self.amount -= 1
+            if self.amount <= 0:
+                self.remove()
+
+
 # ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
@@ -307,6 +325,7 @@ POWER_REGISTRY = {
     "strength": Strength,
     "focus": Focus,
     "artifact": Artifact,
+    "plating": Plating,
     "dexterity": Dexterity,
     "vulnerable": Vulnerable,
     "weak": Weak,

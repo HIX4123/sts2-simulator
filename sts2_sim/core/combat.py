@@ -77,6 +77,18 @@ class CombatState:
             if card:
                 self.discard_pile.append(card)
 
+    def is_card_playable(self, card: "STS2Card") -> bool:
+        """비용/자원 + Shackled(전체)/Tangled(공격) 차단 검사."""
+        if not card.playable:
+            return False
+        if card.cost > self.player.energy or card.star_cost > self.player.stars:
+            return False
+        if self.player.get_power_amount("shackled") > 0:
+            return False
+        if card.card_type == CardType.ATTACK and self.player.get_power_amount("tangled") > 0:
+            return False
+        return True
+
     # ──────────────────────────────────────────
     # 전투 루프
     # ──────────────────────────────────────────
@@ -125,6 +137,10 @@ class CombatState:
             self.player.orb_queue.trigger_turn_end(self)
             if not self.alive_enemies:
                 return self._finish(True)
+            for power in list(self.player._powers.values()):
+                on_end = getattr(power, "on_turn_end", None)
+                if on_end:
+                    on_end()
             self.player.tick_powers()
             self._discard_hand()
             if self.player.is_dead:  # Poison/Burning 자해
@@ -138,6 +154,10 @@ class CombatState:
                     if on_start:
                         on_start()
                 monster.take_turn([self.player])
+                for power in list(monster._powers.values()):
+                    on_end = getattr(power, "on_turn_end", None)
+                    if on_end:
+                        on_end()
                 monster.tick_powers()
                 if self.player.is_dead:
                     return self._finish(False)
@@ -147,9 +167,7 @@ class CombatState:
 
     def play_card(self, card: "STS2Card", target: Optional["MonsterModel"] = None) -> bool:
         """카드 플레이: 비용 지불 → 효과 → 버림/소모 이동 → 렐릭 훅."""
-        if card not in self.hand or not card.playable:
-            return False
-        if card.cost > self.player.energy or card.star_cost > self.player.stars:
+        if card not in self.hand or not self.is_card_playable(card):
             return False
 
         self.player.energy -= card.cost
@@ -198,10 +216,7 @@ class SimplePolicy:
         if not enemies:
             return None
 
-        playable = [
-            c for c in combat.hand
-            if c.playable and c.cost <= player.energy and c.star_cost <= player.stars
-        ]
+        playable = [c for c in combat.hand if combat.is_card_playable(c)]
         if not playable:
             return None
 

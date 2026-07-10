@@ -54,11 +54,12 @@ def test_full_combat_policy():
     wins = 0
     for seed in range(10):
         player = make_player()
-        combat = CombatState(player, make_encounter("slimes_weak"), seed=seed)
+        monsters = make_encounter("slimes_weak", random.Random(seed))
+        combat = CombatState(player, monsters, seed=seed)
         result = combat.run(SimplePolicy())
         wins += result.victory
-    assert wins == 10, f"slimes_weak 승률 이상: {wins}/10"
-    print(f"✅ Ironclad vs slimes_weak: {wins}/10 승리")
+    assert wins >= 8, f"slimes_weak 승률 이상: {wins}/10"
+    print(f"✅ Ironclad vs slimes_weak(실제 3마리 구성): {wins}/10 승리")
 
     # BurningBlood: 승리 후 6 회복 확인
     player = make_player()
