@@ -10,11 +10,11 @@
 | 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
 | 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 16종 | 스타터 전량 + 상태이상 (STS2 전체 593종) |
-| 파워 | 18종 | Plating/Artifact/Tangled 등 전투 배선 완료 |
+| 카드 | 98종 | **Ironclad 풀 완전 이식(싱글 85종)** + 스타터/상태이상 (STS2 전체 593종) |
+| 파워 | 43종 | 카드 파워 26종 포함 — 비용 수정/자동 플레이/소모 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue |
-| 테스트 | 7개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 8개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -27,10 +27,12 @@ sts2_sim/
 │  ├─ sts2_monster.py    # MonsterModel + 상태 머신 + 기본 17종
 │  └─ monsters_extra.py  # Phase 6a 추가 17종
 ├─ models/
-│  ├─ sts2_power.py      # 파워 18종
-│  ├─ sts2_card.py       # 카드 16종
+│  ├─ sts2_power.py      # 파워 43종
+│  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종
 │  ├─ sts2_relic.py      # 렐릭 22종
 │  └─ sts2_orb.py        # 오브 5종 + OrbQueue
+├─ cards/
+│  └─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
 └─ core/
    ├─ combat.py          # 턴 루프 + SimplePolicy
    ├─ policy.py          # GreedyPolicy (인텐트 인지)
@@ -75,8 +77,28 @@ Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
 | globe_head_normal (HP 148) | 0/20 | HARD |
 | knights_elite (3기사, 총 HP 276) | 0/20 | ELITE |
 
-런 완주(7층, 엘리트 피날레)는 현 카드 풀 16종으로는 실제 3기사 엘리트를 넘기 어려움 —
-카드 풀 확대(Phase 6b)가 승률의 병목.
+**Phase 6b 이후 런 통계 (그리디, 50시드):** 완주 0% — 평균 도달 층 5.6/7,
+사망의 77%가 최종 엘리트(3기사, 총 HP 276). 실험상 **전 카드 업그레이드 튜닝 덱은 7/20 승리**
+→ 병목은 카드 풀이 아니라 업그레이드 기회(휴식 2회)와 렐릭/포션 부재.
+실제 맵 그래프·렐릭 풀 이식(Phase 6c+)에서 재측정 예정.
+
+## 🃏 Ironclad 카드 풀 (Phase 6b)
+
+디컴파일 `IroncladCardPool` 90종 중 싱글플레이 85종 전량 이식
+(멀티 전용 Blaze/DemonicShield/Midnight/Outrage/Tank 제외).
+
+- **전투 엔진 확장:** X코스트(Whirlwind/Cascade), 자동 플레이(Havoc/Cascade/Stampede/
+  Hellraiser/HowlFromBeyond), 비용 수정 파이프라인(FreeAttack/Corruption/Stomp 동적 비용),
+  카드 소모 훅(DrumOfBattle), 선천성(Innate), 파워 카드 소멸, OneTwoPunch 2회 발동
+- **신규 파워 26종:** DemonForm, FeelNoPain, DarkEmbrace, Rage, FlameBarrier, Juggernaut,
+  Rupture, Barricade, NoDraw, TempStrength, Aggression, Colossus, CrimsonMantle, Cruelty,
+  Hellraiser, Inferno, Juggling, NoEnergyGain, OneTwoPunch, Pyre, Stampede, Unmovable,
+  Vicious, FreeAttack, Corruption, Vigor
+- **정합성 수정:** 취약/약화 재적용 시 지속시간 스택 + amount-duration 동기화,
+  FlameBarrier를 적 턴 이후 제거(반격 가능), 파워 카드가 버림 더미로 순환하던 문제 제거
+- **보상 구조:** 희귀도 가중(C60/U37/R3) 3장 제시 → 가치 휴리스틱 선택 (원본 대응)
+- **단순화 표기:** 카드 선택 UI가 필요한 효과(Armaments/Brand/Headbutt/TrueGrit+ 등)는
+  무작위 선택으로 대체하고 소스에 `[선택→무작위]` 주석
 
 ## 🔬 생성 방법론 (Phase 6a)
 
@@ -88,5 +110,6 @@ Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6b+ 참조 — 몬스터 잔여 ~87종, 카드 풀 확대(593종),
-렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension, 실제 맵 그래프.
+ROADMAP.md의 Phase 6c+ 참조 — 나머지 캐릭터 카드 풀(Silent/Defect/Necrobinder/Regent),
+몬스터 잔여 ~87종, 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage),
+Ascension, 실제 맵 그래프.

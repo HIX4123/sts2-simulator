@@ -18,7 +18,8 @@ from sts2_sim.core.encounters import (
 )
 from sts2_sim.entities.player import Player
 from sts2_sim.entities.sts2_character import create_character
-from sts2_sim.models.sts2_card import create_card
+from sts2_sim.models.sts2_card import Rarity, create_card
+from sts2_sim.cards.ironclad import IRONCLAD_POOL_BY_RARITY
 
 
 # 층 시퀀스: N1=쉬운 전투, N2=중간 전투, R=휴식, E=엘리트
@@ -26,11 +27,23 @@ DEFAULT_FLOOR_PLAN = ["N1", "N1", "R", "N2", "N2", "R", "E"]
 
 # 전투 보상 카드 풀 (캐릭터별 — 이식된 카드 한정)
 REWARD_POOLS = {
-    "Ironclad": ["bash", "strike", "defend"],
     "Silent": ["neutralize", "survivor", "deflect", "acrobatics"],
     "Defect": ["zap", "dualcast", "strike", "defend"],
     "Necrobinder": ["bodyguard", "unleash", "strike", "defend"],
     "Regent": ["venerate", "falling_star", "strike", "defend"],
+}
+
+# 희귀도 가중치 (STS 표준 일반 전투 보상 분포)
+_RARITY_WEIGHTS = [(Rarity.COMMON, 60), (Rarity.UNCOMMON, 37), (Rarity.RARE, 3)]
+
+# 캐릭터별 희귀도 풀 (Phase 6b: Ironclad 전체 이식)
+RARITY_POOLS = {
+    "Ironclad": {
+        # Basic(bash/strike/defend)은 원본과 동일하게 보상 풀 제외
+        Rarity.COMMON: IRONCLAD_POOL_BY_RARITY[Rarity.COMMON],
+        Rarity.UNCOMMON: IRONCLAD_POOL_BY_RARITY[Rarity.UNCOMMON],
+        Rarity.RARE: IRONCLAD_POOL_BY_RARITY[Rarity.RARE],
+    },
 }
 
 
@@ -78,10 +91,35 @@ class RunState:
             card.upgrade()
             log.append(f"F{floor_num} 휴식(업그레이드): {card.name}+")
 
+    @staticmethod
+    def _reward_score(card, player) -> float:
+        """보상 후보 가치: 코스트당 데미지/블록, 파워는 고정 가치."""
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type == CardType.POWER:
+            return 5.0
+        cost = max(1, card.cost)
+        damage = card.damage_estimate(player, None, None)
+        block = card.block_estimate(player, None)
+        return max(damage, block, 2.0) / cost  # 유틸 스킬 최소 가치 2
+
     def _card_reward(self, log: List[str]) -> None:
-        """전투 보상: 캐릭터 풀에서 카드 1장 추가."""
-        pool = REWARD_POOLS.get(self.character.name, ["strike", "defend"])
-        card = create_card(self.rng.choice(pool))
+        """전투 보상: 희귀도 가중(60/37/3)으로 3장 제시 → 휴리스틱 최고 가치 선택.
+        (원본 STS 보상 구조 — 3장 중 1장 선택)"""
+        rarity_pool = RARITY_POOLS.get(self.character.name)
+        if rarity_pool:
+            rarities = [r for r, _ in _RARITY_WEIGHTS]
+            weights = [w for _, w in _RARITY_WEIGHTS]
+            offers = []
+            while len(offers) < 3:
+                rarity = self.rng.choices(rarities, weights=weights, k=1)[0]
+                card = create_card(self.rng.choice(rarity_pool[rarity]))
+                if card and card.card_id not in {c.card_id for c in offers}:
+                    offers.append(card)
+            player = Player(self.character, deck=self.deck)
+            card = max(offers, key=lambda c: self._reward_score(c, player))
+        else:
+            pool = REWARD_POOLS.get(self.character.name, ["strike", "defend"])
+            card = create_card(self.rng.choice(pool))
         if card:
             self.deck.append(card)
 

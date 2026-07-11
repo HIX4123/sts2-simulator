@@ -18,6 +18,8 @@ class Creature:
         self._current_hp = max_hp
         self._block = 0
         self._powers: Dict[str, Any] = {}
+        self.hp_lost_this_turn = 0   # Spite 등 "이번 턴 HP 손실" 조건용
+        self.times_hp_lost = 0       # TearAsunder — 전투 중 HP 손실 횟수
 
     @property
     def current_hp(self) -> int:
@@ -43,7 +45,7 @@ class Creature:
     # 파워
     # ──────────────────────────────────────────
 
-    def apply_power(self, power: "STS2Power") -> bool:
+    def apply_power(self, power: "STS2Power", applier: Optional["Creature"] = None) -> bool:
         """파워 적용 (동일 ID면 스택). 디버프는 Artifact가 1회 무효화."""
         if power.is_debuff and self.get_power_amount("artifact") > 0:
             artifact = self._powers["artifact"]
@@ -51,7 +53,14 @@ class Creature:
             if artifact.amount <= 0:
                 artifact.remove()
             return False
-        power.apply(self)
+        power.apply(self, applier)
+        # Vicious — 시전자가 적에게 취약을 걸 때마다 드로우
+        if (applier is not None and applier is not self
+                and power.power_id == "vulnerable"):
+            vicious = applier.get_power_amount("vicious")
+            combat = getattr(applier, "combat", None)
+            if vicious > 0 and combat is not None:
+                combat.draw_cards(vicious)
         return True
 
     def has_power(self, power_id: str) -> bool:
@@ -82,17 +91,29 @@ class Creature:
         return max(0, amount)
 
     def take_damage(self, amount: int, source: Optional[object] = None) -> Dict[str, Any]:
-        """피격 처리: 수신 측 수정(Vulnerable) → 블록 → HP → 피격 트리거."""
+        """피격 처리: 수신 측 수정(Vulnerable/Colossus/Cruelty) → 블록 → HP → 피격 트리거."""
+        pre_incoming = amount
         for p in self._powers.values():
             if getattr(p, "damage_side", None) == "incoming":
-                amount = p.modify_damage(amount, is_attack=True)
+                modify_src = getattr(p, "modify_incoming", None)
+                if modify_src:
+                    amount = modify_src(amount, source)
+                else:
+                    amount = p.modify_damage(amount, is_attack=True)
+
+        # Cruelty — 공격자의 Cruelty가 취약 배율을 amount/100만큼 증폭 (1.5x → 1.75x 등)
+        if (source is not None and hasattr(source, "get_power_amount")
+                and self.get_power_amount("vulnerable") > 0):
+            cruelty = source.get_power_amount("cruelty")
+            if cruelty > 0:
+                amount += int(pre_incoming * cruelty / 100)
 
         if amount <= 0:
             return {"hp_lost": 0, "killed": False}
 
         block_absorbed = min(self._block, amount)
         self._block -= block_absorbed
-        hp_lost = self.lose_hp(amount - block_absorbed)
+        hp_lost = self.lose_hp(amount - block_absorbed, from_damage=True)
 
         if hp_lost > 0:
             for p in list(self._powers.values()):
@@ -103,14 +124,29 @@ class Creature:
         return {"hp_lost": hp_lost, "killed": self.is_dead}
 
     def gain_block(self, amount: int) -> None:
-        """블록 획득 (Dexterity/Frail 수정 적용)."""
+        """블록 획득 (Dexterity/Frail 수정 적용, on_block_gained 트리거)."""
         for p in self._powers.values():
             amount = p.modify_block(amount)
-        self._block += max(0, amount)
+        gained = max(0, amount)
+        self._block += gained
+        if gained > 0:
+            for p in list(self._powers.values()):
+                hook = getattr(p, "on_block_gained", None)
+                if hook:
+                    hook(gained)
 
-    def lose_hp(self, amount: int) -> int:
+    def lose_hp(self, amount: int, from_damage: bool = False) -> int:
+        """HP 감소. from_damage=False(카드/자해)일 때만 on_hp_lost 트리거 (Rupture)."""
         actual = min(max(0, amount), self._current_hp)
         self._current_hp -= actual
+        if actual > 0:
+            self.hp_lost_this_turn += actual
+            self.times_hp_lost += 1
+        if actual > 0 and not from_damage:
+            for p in list(self._powers.values()):
+                hook = getattr(p, "on_hp_lost", None)
+                if hook:
+                    hook(actual)
         return actual
 
     def heal(self, amount: int) -> None:
@@ -121,8 +157,10 @@ class Creature:
         self._current_hp = min(self._current_hp + max(0, amount), self._max_hp)
 
     def start_of_turn(self) -> None:
-        """턴 시작: 블록 초기화."""
-        self._block = 0
+        """턴 시작: 블록 초기화 (Barricade 보유 시 유지), 턴별 카운터 리셋."""
+        if not self.has_power("barricade"):
+            self._block = 0
+        self.hp_lost_this_turn = 0
 
     def __repr__(self) -> str:
         return f"{self.name}(HP:{self._current_hp}/{self._max_hp}, Block:{self._block})"

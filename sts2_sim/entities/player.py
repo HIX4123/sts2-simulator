@@ -50,6 +50,8 @@ class Player(Creature):
                     self.master_deck.append(card)
 
     def gain_energy(self, amount: int) -> None:
+        if self.has_power("no_energy_gain"):  # ExpectAFight 이후 차단
+            return
         self.energy += amount
 
     def gain_stars(self, amount: int) -> None:

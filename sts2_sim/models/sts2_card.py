@@ -36,6 +36,7 @@ class Rarity(Enum):
     COMMON = auto()
     UNCOMMON = auto()
     RARE = auto()
+    ANCIENT = auto()   # STS2 신규 등급 (Break/Corruption 등) — 일반 보상 풀 제외
     TOKEN = auto()
 
 
@@ -56,12 +57,18 @@ class STS2Card:
     star_cost: int = 0      # Regent 전용: 카드 플레이에 필요한 Stars
     exhausts: bool = False
     playable: bool = True   # Dazed 등 사용 불가 카드는 False
+    target_all: bool = False  # TargetType.AllEnemies (전체 공격)
+    is_innate: bool = False   # 선천성 — 전투 첫 손패에 포함
+    x_cost: bool = False      # X 코스트 (Whirlwind/Cascade) — 플레이 시 에너지 전부 소비
+    tags: frozenset = frozenset()  # CardTag (예: "strike" — PerfectedStrike/Hellraiser 참조)
 
     def __init__(self):
         self.upgraded = False
         self.is_ethereal = False
         self.times_upgraded = 0
         self.cost = type(self).cost  # 인스턴스별 비용 (업그레이드로 변동 가능)
+        self.x_value = 0             # X 코스트 카드가 소비한 에너지 (play_card가 설정)
+        self.is_innate = type(self).is_innate  # 업그레이드로 Innate 부여 가능 (Aggression 등)
 
     def use(self, source, targets: List["Creature"], combat=None) -> None:
         """카드 사용. combat은 전투 컨텍스트 (드로우/오브 등 필요 시)."""
@@ -70,6 +77,15 @@ class STS2Card:
     def upgrade(self) -> None:
         self.upgraded = True
         self.times_upgraded += 1
+
+    # ── 정책(GreedyPolicy)용 추정치 프로토콜 ──
+    def damage_estimate(self, player, combat=None, target=None) -> int:
+        """파워 수정 전 예상 총 데미지 (base × hits). 공격 카드가 오버라이드."""
+        return 0
+
+    def block_estimate(self, player, combat=None) -> int:
+        """예상 블록량. 블록 카드가 오버라이드."""
+        return 0
 
     def __repr__(self) -> str:
         plus = "+" if self.upgraded else ""
@@ -87,11 +103,15 @@ class Strike(STS2Card):
     card_type = CardType.ATTACK
     rarity = Rarity.BASIC
     cost = 1
+    tags = frozenset({"strike"})
 
     def use(self, source, targets, combat=None) -> None:
         damage = 9 if self.upgraded else 6
         for target in targets:
             _deal_attack(source, target, damage)
+
+    def damage_estimate(self, player, combat=None, target=None) -> int:
+        return 9 if self.upgraded else 6
 
 
 class Defend(STS2Card):
@@ -126,7 +146,10 @@ class Bash(STS2Card):
         for target in targets:
             _deal_attack(source, target, damage)
             if hasattr(target, "apply_power"):
-                target.apply_power(Vulnerable(vuln))
+                target.apply_power(Vulnerable(vuln), applier=source)
+
+    def damage_estimate(self, player, combat=None, target=None) -> int:
+        return 10 if self.upgraded else 8
 
 
 # ══════════════════════════════════════════

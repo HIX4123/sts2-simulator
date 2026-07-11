@@ -41,14 +41,26 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 - [x] 실제 인카운터 구성 12종 (SlimesWeak 3마리 구성, KnightsElite 3기사, 레이더 3/5 등)
 - [x] Plating 파워, Tangled/Shackled 카드 차단 배선
 
-## 📋 Phase 6b+ — 남은 확대 (계획)
+## ✅ Phase 6b — Ironclad 카드 풀 (완료)
 
+- [x] **Ironclad 카드 풀 완전 이식**: `IroncladCardPool` 90종 중 싱글플레이 85종
+  (멀티 전용 Blaze/DemonicShield/Midnight/Outrage/Tank 5종 제외) + GiantRock 토큰
+- [x] 카드 파워 26종 신규 배선 (DemonForm/Juggernaut/Corruption/Hellraiser/Inferno 등, 총 43종)
+- [x] 전투 엔진 확장: X코스트(Whirlwind/Cascade), 자동 플레이(Havoc/Stampede/Hellraiser),
+  비용 수정 파이프라인(FreeAttack/Corruption/Stomp), 소모 훅(DrumOfBattle/HowlFromBeyond),
+  선천성(Innate), 전체 공격, 파워 카드 소멸 처리
+- [x] 취약/약화 지속시간-수치 동기화 + 재적용 스택 수정
+- [x] 보상 시스템: 희귀도 가중(60/37/3) 3장 제시 → 휴리스틱 선택 (원본 보상 구조)
+- [x] GreedyPolicy 확장: 카드 자체 추정치 프로토콜(damage/block_estimate), 파워 우선 설치
+
+## 📋 Phase 6c+ — 남은 확대 (계획)
+
+- [ ] 나머지 캐릭터 카드 풀 (Silent/Defect/Necrobinder/Regent/Colorless — 전체 593종 중 98종 이식)
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
-- [ ] 카드 풀 확대 (STS2 전체 593종 중 16종 이식됨) — `Models.CardPools` 기준 캐릭터별 풀
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
 - [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
-- [ ] 실제 맵 그래프 (현재 고정 층 시퀀스)
+- [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 업그레이드/보상 기회 확대로 엘리트 승률 개선
 - [ ] MCTS 정책 실험
 
 ---
@@ -68,6 +80,7 @@ python3 test_sts2_phase3.py       # Orb/스타터 카드/렐릭
 python3 test_sts2_phase4.py       # 전투/런 루프
 python3 test_sts2_phase5.py       # 정책/통계
 python3 test_sts2_phase6.py       # 신규 몬스터/인카운터
+python3 test_sts2_phase6b.py      # Ironclad 카드 풀 85종
 ```
 
 **통계 실행:**

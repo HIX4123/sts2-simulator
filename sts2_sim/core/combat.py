@@ -37,12 +37,16 @@ class CombatState:
         self.monsters = monsters
         self.rng = random.Random(seed)
         self.turn = 0
+        # 파워(Juggernaut 등)가 전투 컨텍스트에 접근할 수 있도록 역참조
+        self.player.combat = self
 
         self.draw_pile: List["STS2Card"] = list(player.master_deck)
         self.rng.shuffle(self.draw_pile)
         self.hand: List["STS2Card"] = []
         self.discard_pile: List["STS2Card"] = []
         self.exhaust_pile: List["STS2Card"] = []
+        self.cards_exhausted_this_turn = 0  # EvilEye/ForgottenRitual 조건
+        self.attacks_played_this_turn = 0   # Stomp 동적 비용
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -53,6 +57,8 @@ class CombatState:
         return [m for m in self.monsters if not m.is_gone]
 
     def draw_cards(self, count: int) -> None:
+        if self.player.get_power_amount("no_draw") > 0:
+            return
         for _ in range(count):
             if not self.draw_pile:
                 if not self.discard_pile:
@@ -60,7 +66,9 @@ class CombatState:
                 self.draw_pile = self.discard_pile
                 self.discard_pile = []
                 self.rng.shuffle(self.draw_pile)
-            self.hand.append(self.draw_pile.pop())
+            card = self.draw_pile.pop()
+            self.hand.append(card)
+            self.notify_player_powers("on_card_drawn", card, self)  # Hellraiser
 
     def discard_from_hand(self, count: int) -> None:
         for _ in range(count):
@@ -70,6 +78,42 @@ class CombatState:
             self.hand.remove(card)
             self.discard_pile.append(card)
 
+    def notify_player_powers(self, hook: str, *hook_args) -> None:
+        """플레이어 파워에 카드 이벤트 통지 (on_card_played / on_card_exhausted 등)."""
+        for power in list(self.player._powers.values()):
+            fn = getattr(power, hook, None)
+            if fn:
+                fn(*hook_args)
+
+    def _exhaust_card(self, card: "STS2Card") -> None:
+        """카드 소모 + 소모 이벤트 통지."""
+        self.exhaust_pile.append(card)
+        self.cards_exhausted_this_turn += 1
+        self.notify_player_powers("on_card_exhausted", card, self)
+        on_exhausted = getattr(card, "on_exhausted", None)  # DrumOfBattle/HowlFromBeyond
+        if on_exhausted:
+            on_exhausted(self)
+
+    def exhaust_from_hand(self, count: int) -> int:
+        """핸드에서 무작위 카드 소모. 실제 소모된 수 반환."""
+        exhausted = 0
+        for _ in range(count):
+            if not self.hand:
+                break
+            card = self.rng.choice(self.hand)
+            self.hand.remove(card)
+            self._exhaust_card(card)
+            exhausted += 1
+        return exhausted
+
+    def exhaust_all_hand(self) -> int:
+        """핸드 전체 소모 (FiendFire류). 소모된 수 반환."""
+        cards = list(self.hand)
+        self.hand = []
+        for card in cards:
+            self._exhaust_card(card)
+        return len(cards)
+
     def add_status_to_discard(self, card_id: str, count: int) -> None:
         """몬스터가 상태이상 카드를 버림 더미에 삽입 (Dazed/Slimed)."""
         for _ in range(count):
@@ -77,11 +121,25 @@ class CombatState:
             if card:
                 self.discard_pile.append(card)
 
+    def get_card_cost(self, card: "STS2Card") -> int:
+        """실효 비용: 파워(FreeAttack/Corruption)의 비용 수정 반영. X코스트는 0(최소)."""
+        if card.x_cost:
+            return 0
+        cost = card.cost
+        dynamic = getattr(card, "dynamic_cost", None)  # Stomp — 상태 의존 비용
+        if dynamic:
+            cost = dynamic(self)
+        for power in self.player._powers.values():
+            modify = getattr(power, "modify_card_cost", None)
+            if modify:
+                cost = modify(card, cost)
+        return max(0, cost)
+
     def is_card_playable(self, card: "STS2Card") -> bool:
         """비용/자원 + Shackled(전체)/Tangled(공격) 차단 검사."""
         if not card.playable:
             return False
-        if card.cost > self.player.energy or card.star_cost > self.player.stars:
+        if self.get_card_cost(card) > self.player.energy or card.star_cost > self.player.stars:
             return False
         if self.player.get_power_amount("shackled") > 0:
             return False
@@ -111,10 +169,23 @@ class CombatState:
 
             # ── 플레이어 턴 ──
             self.player.start_of_turn()
+            self.cards_exhausted_this_turn = 0
+            self.attacks_played_this_turn = 0
             self.player.energy = self.player.max_energy
             for relic in self.player.relics:
                 relic.on_turn_start(self, self.turn)
+            for power in list(self.player._powers.values()):
+                on_start = getattr(power, "on_turn_start", None)
+                if on_start:
+                    on_start()
             self.player.orb_queue.trigger_turn_start(self)
+
+            if self.turn == 1:
+                # 선천성(Innate) 카드는 첫 손패에 우선 포함
+                innate = [c for c in self.draw_pile if c.is_innate]
+                for card in innate:
+                    self.draw_pile.remove(card)
+                    self.hand.append(card)
 
             draw_count = self.BASE_DRAW
             for relic in self.player.relics:
@@ -162,43 +233,105 @@ class CombatState:
                 if self.player.is_dead:
                     return self._finish(False)
 
+            self.notify_player_powers("on_enemy_turn_end")  # Colossus 감쇠
+
             if not self.alive_enemies:
                 return self._finish(True)
+
+    def _resolve_targets(self, card: "STS2Card",
+                         target: Optional["MonsterModel"]) -> List["MonsterModel"]:
+        if card.card_type != CardType.ATTACK:
+            return []
+        if card.target_all:
+            return list(self.alive_enemies)
+        return [target] if target is not None else self.alive_enemies[:1]
 
     def play_card(self, card: "STS2Card", target: Optional["MonsterModel"] = None) -> bool:
         """카드 플레이: 비용 지불 → 효과 → 버림/소모 이동 → 렐릭 훅."""
         if card not in self.hand or not self.is_card_playable(card):
             return False
 
-        self.player.energy -= card.cost
+        if card.x_cost:
+            card.x_value = self.player.energy  # X = 남은 에너지 전부 소비
+            self.player.energy = 0
+        else:
+            self.player.energy -= self.get_card_cost(card)
         self.player.stars -= card.star_cost
 
         # 카드는 효과 처리 전에 핸드를 떠난다 (효과 중 핸드 버리기가 자신을 버리지 않도록)
         self.hand.remove(card)
 
         if card.card_type == CardType.ATTACK:
-            targets = [target] if target is not None else self.alive_enemies[:1]
-        else:
-            targets = []
+            self.attacks_played_this_turn += 1
+            # FreeAttack(Unrelenting) — 효과 처리 전에 스택 차감 (원본 BeforeCardPlayed)
+            if self.player.get_power_amount("free_attack") > 0:
+                fa = self.player._powers["free_attack"]
+                fa.amount -= 1
+                if fa.amount <= 0:
+                    fa.remove()
+
+        targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
 
-        if card.exhausts:
-            self.exhaust_pile.append(card)
-        else:
-            self.discard_pile.append(card)
+        # OneTwoPunch — 공격 카드 2회 발동
+        if (card.card_type == CardType.ATTACK
+                and self.player.get_power_amount("one_two_punch") > 0):
+            otp = self.player._powers["one_two_punch"]
+            otp.amount -= 1
+            if otp.amount <= 0:
+                otp.remove()
+            retargets = [t for t in self._resolve_targets(card, target) if not t.is_gone]
+            if retargets or card.card_type != CardType.ATTACK:
+                card.use(self.player, retargets, self)
+
+        self._settle_card(card)
 
         for relic in self.player.relics:
             relic.on_card_played(card)
+        self.notify_player_powers("on_card_played", card, self)
         return True
+
+    def _settle_card(self, card: "STS2Card", force_exhaust: bool = False) -> None:
+        """플레이 후 카드 이동: 파워는 전투에서 제거, 소모 or 버림 (Corruption 스킬은 소모)."""
+        if card.card_type == CardType.POWER:
+            return  # 파워 카드는 플레이 시 전투에서 사라진다
+        if (force_exhaust or card.exhausts
+                or (card.card_type == CardType.SKILL
+                    and self.player.has_power("corruption"))):
+            self._exhaust_card(card)
+        else:
+            self.discard_pile.append(card)
+
+    def auto_play(self, card: "STS2Card", force_exhaust: bool = False) -> None:
+        """비용 없이 카드 자동 플레이 (Havoc/Cascade/Stampede/Hellraiser).
+        card는 이미 어느 파일에서든 제거된 상태이거나 핸드에 있을 수 있다."""
+        if card in self.hand:
+            self.hand.remove(card)
+        if not card.playable:
+            self.discard_pile.append(card)
+            return
+        target = min(self.alive_enemies, key=lambda m: m.current_hp) \
+            if self.alive_enemies else None
+        if card.x_cost:
+            card.x_value = 0  # X코스트 자동 플레이는 X=0 (원본 AutoPlay 동일)
+        if card.card_type == CardType.ATTACK:
+            self.attacks_played_this_turn += 1
+        targets = self._resolve_targets(card, target)
+        card.use(self.player, targets, self)
+        self._settle_card(card, force_exhaust=force_exhaust)
+        for relic in self.player.relics:
+            relic.on_card_played(card)
+        self.notify_player_powers("on_card_played", card, self)
 
     def _discard_hand(self) -> None:
         """턴 종료 핸드 정리. 에테리얼 카드는 소모."""
-        for card in self.hand:
+        cards = list(self.hand)
+        self.hand = []
+        for card in cards:
             if card.is_ethereal:
-                self.exhaust_pile.append(card)
+                self._exhaust_card(card)
             else:
                 self.discard_pile.append(card)
-        self.hand = []
 
     def _finish(self, victory: bool) -> CombatResult:
         for relic in self.player.relics:
