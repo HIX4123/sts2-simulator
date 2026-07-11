@@ -10,11 +10,11 @@
 | 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
 | 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 98종 | **Ironclad 풀 완전 이식(싱글 85종)** + 스타터/상태이상 (STS2 전체 593종) |
-| 파워 | 43종 | 카드 파워 26종 포함 — 비용 수정/자동 플레이/소모 훅 배선 완료 |
+| 카드 | 178종 | **Ironclad 85종 + Silent 86종 완전 이식** + 스타터/상태이상 (STS2 전체 593종) |
+| 파워 | 73종 | 카드 파워 52종 포함 — 비용 수정/자동 플레이/소모·버리기 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue |
-| 테스트 | 8개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 9개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -27,12 +27,13 @@ sts2_sim/
 │  ├─ sts2_monster.py    # MonsterModel + 상태 머신 + 기본 17종
 │  └─ monsters_extra.py  # Phase 6a 추가 17종
 ├─ models/
-│  ├─ sts2_power.py      # 파워 43종
+│  ├─ sts2_power.py      # 파워 73종
 │  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종
 │  ├─ sts2_relic.py      # 렐릭 22종
 │  └─ sts2_orb.py        # 오브 5종 + OrbQueue
 ├─ cards/
-│  └─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
+│  ├─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
+│  └─ silent.py          # Phase 6c: Silent 풀 80종 (C19/U34/R25/Ancient2)
 └─ core/
    ├─ combat.py          # 턴 루프 + SimplePolicy
    ├─ policy.py          # GreedyPolicy (인텐트 인지)
@@ -80,7 +81,9 @@ Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
 **Phase 6b 이후 런 통계 (그리디, 50시드):** 완주 0% — 평균 도달 층 5.6/7,
 사망의 77%가 최종 엘리트(3기사, 총 HP 276). 실험상 **전 카드 업그레이드 튜닝 덱은 7/20 승리**
 → 병목은 카드 풀이 아니라 업그레이드 기회(휴식 2회)와 렐릭/포션 부재.
-실제 맵 그래프·렐릭 풀 이식(Phase 6c+)에서 재측정 예정.
+실제 맵 그래프·렐릭 풀 이식(Phase 6d+)에서 재측정 예정.
+**Phase 6c Silent 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 4.8/7 (HP 70으로
+Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병목 동일.
 
 ## 🃏 Ironclad 카드 풀 (Phase 6b)
 
@@ -100,6 +103,30 @@ Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
 - **단순화 표기:** 카드 선택 UI가 필요한 효과(Armaments/Brand/Headbutt/TrueGrit+ 등)는
   무작위 선택으로 대체하고 소스에 `[선택→무작위]` 주석
 
+## 🗡️ Silent 카드 풀 (Phase 6c)
+
+디컴파일 `SilentCardPool` 91종 중 싱글플레이 86종 전량 이식
+(멀티 전용 BladeSymphony/Concoct/Fade/Flanking/Sneaky 제외).
+
+- **전투 엔진 확장:** **Sly** 키워드(효과로 버려질 때 무료 자동 플레이 — 턴 종료 버리기는
+  미발동, 원본 CardCmd.Discard 대응), **Retain** 키워드(턴 종료 유지), 중앙 버리기 경로
+  `discard_card`(MementoMori 카운터/버리기 훅), Shiv 생성 파이프라인
+  `create_shivs`(손패 10장 제한, Accuracy 가산/PhantomBlades 첫타 보너스+Retain/
+  FanOfKnives 전체 공격화/Inky 인챈트), 드로우 수정 파이프라인(ToolsOfTheTrade/Predator),
+  조건부 플레이 훅(GrandFinale), 대상 지정 스킬(needs_target), Burst 스킬 2회 발동,
+  FreeSkill 비용 파이프라인(Pounce), Strangle 카드 플레이 트리거
+- **신규 파워 26종:** Accelerant, Accuracy, Afterimage, TempDexterity, Blur, Burst,
+  CorrosiveWave, Envenom, FanOfKnives, InfiniteBlades, MasterPlanner, Nightmare,
+  NoxiousFumes, Outbreak, PhantomBlades, SerpentForm, DoubleDamage, ShadowStep,
+  Shadowmeld, Speedster, Strangle, TheHunt, ToolsOfTheTrade, Tracking, WellLaidPlans,
+  WraithForm + Intangible/BlockNextTurn/DrawCardsNextTurn/FreeSkill
+- **Poison 재작업:** 원본 TriggerCount 로직 — 상대의 Accelerant만큼 추가 발동
+- **TheHunt:** 처치 시 combat.extra_card_rewards → 런 루프가 추가 보상 지급
+- **전투 한정 키워드 변형 원복:** MasterPlanner Sly/PhantomBlades Retain은 전투 종료 시
+  마스터 덱에서 초기화
+- **단순화 표기:** 카드 선택 UI 효과(DaggerThrow/Prepared/HandTrick/Nightmare/
+  WellLaidPlans/ToolsOfTheTrade)는 무작위 선택 `[선택→무작위]`
+
 ## 🔬 생성 방법론 (Phase 6a)
 
 몬스터 17종은 멀티에이전트 파이프라인으로 이식:
@@ -110,6 +137,6 @@ Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6c+ 참조 — 나머지 캐릭터 카드 풀(Silent/Defect/Necrobinder/Regent),
+ROADMAP.md의 Phase 6d+ 참조 — 나머지 캐릭터 카드 풀(Defect/Necrobinder/Regent/Colorless),
 몬스터 잔여 ~87종, 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage),
 Ascension, 실제 맵 그래프.

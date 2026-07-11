@@ -61,6 +61,14 @@ class Creature:
             combat = getattr(applier, "combat", None)
             if vicious > 0 and combat is not None:
                 combat.draw_cards(vicious)
+        # Outbreak — 시전자가 적에게 중독을 걸 때마다 모든 적에게 피해
+        if (applier is not None and applier is not self
+                and power.power_id == "poison"):
+            outbreak = applier.get_power_amount("outbreak")
+            combat = getattr(applier, "combat", None)
+            if outbreak > 0 and combat is not None:
+                for enemy in list(combat.alive_enemies):
+                    enemy.take_damage(outbreak, source=applier)
         return True
 
     def has_power(self, power_id: str) -> bool:
@@ -157,8 +165,8 @@ class Creature:
         self._current_hp = min(self._current_hp + max(0, amount), self._max_hp)
 
     def start_of_turn(self) -> None:
-        """턴 시작: 블록 초기화 (Barricade 보유 시 유지), 턴별 카운터 리셋."""
-        if not self.has_power("barricade"):
+        """턴 시작: 블록 초기화 (Barricade/Blur 보유 시 유지), 턴별 카운터 리셋."""
+        if not self.has_power("barricade") and not self.has_power("blur"):
             self._block = 0
         self.hp_lost_this_turn = 0
 

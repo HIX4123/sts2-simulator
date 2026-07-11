@@ -47,6 +47,12 @@ class CombatState:
         self.exhaust_pile: List["STS2Card"] = []
         self.cards_exhausted_this_turn = 0  # EvilEye/ForgottenRitual 조건
         self.attacks_played_this_turn = 0   # Stomp 동적 비용
+        self.skills_played_this_turn = 0    # Pinpoint 동적 비용
+        self.cards_discarded_this_turn = 0  # MementoMori
+        self.shivs_played_this_turn = 0     # PhantomBlades 첫 Shiv 보너스
+        self.cards_drawn_this_combat = 0    # Murder
+        self.extra_card_rewards = 0         # TheHunt — 런 루프가 소비
+        self.in_hand_draw = False           # Speedster — 턴 시작 드로우 구분
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -68,15 +74,51 @@ class CombatState:
                 self.rng.shuffle(self.draw_pile)
             card = self.draw_pile.pop()
             self.hand.append(card)
-            self.notify_player_powers("on_card_drawn", card, self)  # Hellraiser
+            self.cards_drawn_this_combat += 1
+            # Hellraiser 자동 플레이 / CorrosiveWave 중독 / Speedster 피해
+            self.notify_player_powers("on_card_drawn", card, self)
+
+    def discard_card(self, card: "STS2Card") -> None:
+        """카드 1장 버리기 (효과에 의한 버리기): Sly면 무료 자동 플레이."""
+        if card in self.hand:
+            self.hand.remove(card)
+        sly = card.is_sly or card._sly_this_turn
+        self.discard_pile.append(card)
+        self.cards_discarded_this_turn += 1
+        self.notify_player_powers("on_card_discarded", card, self)
+        if sly and card.playable:
+            self.discard_pile.remove(card)
+            self.auto_play(card)
 
     def discard_from_hand(self, count: int) -> None:
         for _ in range(count):
             if not self.hand:
                 return
-            card = self.rng.choice(self.hand)
-            self.hand.remove(card)
-            self.discard_pile.append(card)
+            self.discard_card(self.rng.choice(self.hand))
+
+    def discard_all_hand(self) -> int:
+        """핸드 전체 버리기 (ShadowStep/StormOfSteel). 버린 수 반환."""
+        cards = list(self.hand)
+        for card in cards:
+            self.discard_card(card)
+        return len(cards)
+
+    def create_shivs(self, count: int, upgraded: bool = False,
+                     inky: bool = False) -> List["STS2Card"]:
+        """Shiv를 손패에 생성 (최대 손패 10장, PhantomBlades Retain 부여)."""
+        made = []
+        for _ in range(count):
+            if len(self.hand) >= 10:  # CardPile.MaxCardsInHand
+                break
+            shiv = create_card("shiv")
+            if upgraded:
+                shiv.upgrade()
+            shiv.inky = inky
+            if self.player.get_power_amount("phantom_blades") > 0:
+                shiv.retains = True
+            self.hand.append(shiv)
+            made.append(shiv)
+        return made
 
     def notify_player_powers(self, hook: str, *hook_args) -> None:
         """플레이어 파워에 카드 이벤트 통지 (on_card_played / on_card_exhausted 등)."""
@@ -125,6 +167,8 @@ class CombatState:
         """실효 비용: 파워(FreeAttack/Corruption)의 비용 수정 반영. X코스트는 0(최소)."""
         if card.x_cost:
             return 0
+        if card._free_this_turn:  # BulletTime
+            return 0
         cost = card.cost
         dynamic = getattr(card, "dynamic_cost", None)  # Stomp — 상태 의존 비용
         if dynamic:
@@ -138,6 +182,9 @@ class CombatState:
     def is_card_playable(self, card: "STS2Card") -> bool:
         """비용/자원 + Shackled(전체)/Tangled(공격) 차단 검사."""
         if not card.playable:
+            return False
+        dynamic = getattr(card, "dynamic_playable", None)  # GrandFinale
+        if dynamic and not dynamic(self):
             return False
         if self.get_card_cost(card) > self.player.energy or card.star_cost > self.player.stars:
             return False
@@ -171,6 +218,9 @@ class CombatState:
             self.player.start_of_turn()
             self.cards_exhausted_this_turn = 0
             self.attacks_played_this_turn = 0
+            self.skills_played_this_turn = 0
+            self.cards_discarded_this_turn = 0
+            self.shivs_played_this_turn = 0
             self.player.energy = self.player.max_energy
             for relic in self.player.relics:
                 relic.on_turn_start(self, self.turn)
@@ -190,7 +240,14 @@ class CombatState:
             draw_count = self.BASE_DRAW
             for relic in self.player.relics:
                 draw_count = relic.modify_hand_draw(draw_count, self.turn)
+            for power in list(self.player._powers.values()):
+                modify = getattr(power, "modify_hand_draw", None)
+                if modify:  # ToolsOfTheTrade / DrawCardsNextTurn
+                    draw_count = modify(draw_count)
+            self.in_hand_draw = True
             self.draw_cards(draw_count)
+            self.in_hand_draw = False
+            self.notify_player_powers("after_hand_draw", self)  # ToolsOfTheTrade 버리기
 
             while True:
                 choice = policy.choose(self)
@@ -240,7 +297,8 @@ class CombatState:
 
     def _resolve_targets(self, card: "STS2Card",
                          target: Optional["MonsterModel"]) -> List["MonsterModel"]:
-        if card.card_type != CardType.ATTACK:
+        if card.card_type != CardType.ATTACK \
+                and not getattr(card, "needs_target", False):
             return []
         if card.target_all:
             return list(self.alive_enemies)
@@ -269,6 +327,14 @@ class CombatState:
                 fa.amount -= 1
                 if fa.amount <= 0:
                     fa.remove()
+        elif card.card_type == CardType.SKILL:
+            self.skills_played_this_turn += 1
+            # FreeSkill(Pounce) — 효과 처리 전에 스택 차감
+            if self.player.get_power_amount("free_skill") > 0:
+                fs = self.player._powers["free_skill"]
+                fs.amount -= 1
+                if fs.amount <= 0:
+                    fs.remove()
 
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
@@ -284,15 +350,34 @@ class CombatState:
             if retargets or card.card_type != CardType.ATTACK:
                 card.use(self.player, retargets, self)
 
+        # Burst — 스킬 카드 2회 발동
+        if (card.card_type == CardType.SKILL
+                and self.player.get_power_amount("burst") > 0):
+            burst = self.player._powers["burst"]
+            burst.amount -= 1
+            if burst.amount <= 0:
+                burst.remove()
+            card.use(self.player, [], self)
+
         self._settle_card(card)
 
         for relic in self.player.relics:
             relic.on_card_played(card)
         self.notify_player_powers("on_card_played", card, self)
+        self._trigger_strangle()
         return True
+
+    def _trigger_strangle(self) -> None:
+        """Strangle — 플레이어 카드 플레이마다 교살당한 적이 비차단 피해."""
+        for enemy in list(self.alive_enemies):
+            amount = enemy.get_power_amount("strangle")
+            if amount > 0:
+                enemy.lose_hp(amount)
 
     def _settle_card(self, card: "STS2Card", force_exhaust: bool = False) -> None:
         """플레이 후 카드 이동: 파워는 전투에서 제거, 소모 or 버림 (Corruption 스킬은 소모)."""
+        card._free_this_turn = False
+        card._sly_this_turn = False
         if card.card_type == CardType.POWER:
             return  # 파워 카드는 플레이 시 전투에서 사라진다
         if (force_exhaust or card.exhausts
@@ -316,24 +401,42 @@ class CombatState:
             card.x_value = 0  # X코스트 자동 플레이는 X=0 (원본 AutoPlay 동일)
         if card.card_type == CardType.ATTACK:
             self.attacks_played_this_turn += 1
+        elif card.card_type == CardType.SKILL:
+            self.skills_played_this_turn += 1
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
         self._settle_card(card, force_exhaust=force_exhaust)
         for relic in self.player.relics:
             relic.on_card_played(card)
         self.notify_player_powers("on_card_played", card, self)
+        self._trigger_strangle()
 
     def _discard_hand(self) -> None:
-        """턴 종료 핸드 정리. 에테리얼 카드는 소모."""
+        """턴 종료 핸드 정리. 에테리얼은 소모, Retain 카드는 유지."""
+        self.notify_player_powers("on_before_hand_discard", self)  # WellLaidPlans
         cards = list(self.hand)
         self.hand = []
         for card in cards:
             if card.is_ethereal:
                 self._exhaust_card(card)
+            elif card.retains or card._retain_this_turn:
+                card._retain_this_turn = False
+                card._free_this_turn = False
+                card._sly_this_turn = False
+                self.hand.append(card)
             else:
+                card._free_this_turn = False
+                card._sly_this_turn = False
                 self.discard_pile.append(card)
 
     def _finish(self, victory: bool) -> CombatResult:
+        # 전투 한정 키워드 변형(MasterPlanner Sly/PhantomBlades Retain 등)을 원복
+        for pile in (self.hand, self.draw_pile, self.discard_pile, self.exhaust_pile):
+            for card in pile:
+                card.is_sly = type(card).is_sly
+                card.retains = type(card).retains
+                card._free_this_turn = card._sly_this_turn = False
+                card._retain_this_turn = False
         for relic in self.player.relics:
             relic.on_combat_end(victory)
         self.player.sync_to_character()

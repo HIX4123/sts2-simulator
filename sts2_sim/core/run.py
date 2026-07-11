@@ -20,6 +20,7 @@ from sts2_sim.entities.player import Player
 from sts2_sim.entities.sts2_character import create_character
 from sts2_sim.models.sts2_card import Rarity, create_card
 from sts2_sim.cards.ironclad import IRONCLAD_POOL_BY_RARITY
+from sts2_sim.cards.silent import SILENT_POOL_BY_RARITY
 
 
 # 층 시퀀스: N1=쉬운 전투, N2=중간 전투, R=휴식, E=엘리트
@@ -27,7 +28,6 @@ DEFAULT_FLOOR_PLAN = ["N1", "N1", "R", "N2", "N2", "R", "E"]
 
 # 전투 보상 카드 풀 (캐릭터별 — 이식된 카드 한정)
 REWARD_POOLS = {
-    "Silent": ["neutralize", "survivor", "deflect", "acrobatics"],
     "Defect": ["zap", "dualcast", "strike", "defend"],
     "Necrobinder": ["bodyguard", "unleash", "strike", "defend"],
     "Regent": ["venerate", "falling_star", "strike", "defend"],
@@ -44,6 +44,7 @@ RARITY_POOLS = {
         Rarity.UNCOMMON: IRONCLAD_POOL_BY_RARITY[Rarity.UNCOMMON],
         Rarity.RARE: IRONCLAD_POOL_BY_RARITY[Rarity.RARE],
     },
+    "Silent": SILENT_POOL_BY_RARITY,
 }
 
 
@@ -149,6 +150,8 @@ class RunState:
             gold = self.rng.randint(self.REWARD_GOLD_MIN, self.REWARD_GOLD_MAX)
             self.character.gain_gold(gold)
             self._card_reward(log)
+            for _ in range(getattr(combat, "extra_card_rewards", 0)):  # TheHunt
+                self._card_reward(log)
             log.append(f"F{floor_num} 승리: [{names}] {result.turns}턴, "
                        f"HP {result.player_hp}, +{gold}G")
 

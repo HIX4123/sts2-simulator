@@ -53,9 +53,22 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 - [x] 보상 시스템: 희귀도 가중(60/37/3) 3장 제시 → 휴리스틱 선택 (원본 보상 구조)
 - [x] GreedyPolicy 확장: 카드 자체 추정치 프로토콜(damage/block_estimate), 파워 우선 설치
 
-## 📋 Phase 6c+ — 남은 확대 (계획)
+## ✅ Phase 6c — Silent 카드 풀 (완료)
 
-- [ ] 나머지 캐릭터 카드 풀 (Silent/Defect/Necrobinder/Regent/Colorless — 전체 593종 중 98종 이식)
+- [x] **Silent 카드 풀 완전 이식**: `SilentCardPool` 91종 중 싱글플레이 86종
+  (멀티 전용 BladeSymphony/Concoct/Fade/Flanking/Sneaky 5종 제외)
+- [x] 카드 파워 26종 신규 배선 (Envenom/NoxiousFumes/Outbreak/Accelerant/
+  PhantomBlades/Intangible/Burst/Nightmare 등, 총 73종)
+- [x] 전투 엔진 확장: **Sly**(버리기 시 자동 플레이), **Retain**(턴 종료 유지),
+  버리기 훅(`discard_card`/MementoMori 카운터), Shiv 생성 파이프라인
+  (Accuracy/PhantomBlades/FanOfKnives/Inky 연동), 드로우 수정 파이프라인
+  (ToolsOfTheTrade/Predator), 조건부 플레이(GrandFinale), 대상 지정 스킬
+- [x] Poison 재작업: Accelerant 다중 발동 (원본 TriggerCount 로직)
+- [x] TheHunt 처치 → 런 루프 추가 카드 보상 배선
+
+## 📋 Phase 6d+ — 남은 확대 (계획)
+
+- [ ] 나머지 캐릭터 카드 풀 (Defect/Necrobinder/Regent/Colorless — 전체 593종 중 184종 이식)
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
@@ -81,6 +94,7 @@ python3 test_sts2_phase4.py       # 전투/런 루프
 python3 test_sts2_phase5.py       # 정책/통계
 python3 test_sts2_phase6.py       # 신규 몬스터/인카운터
 python3 test_sts2_phase6b.py      # Ironclad 카드 풀 85종
+python3 test_sts2_phase6c.py      # Silent 카드 풀 86종
 ```
 
 **통계 실행:**

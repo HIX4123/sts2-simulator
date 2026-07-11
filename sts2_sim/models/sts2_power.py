@@ -173,18 +173,33 @@ class Burning(STS2Power):
 
 
 class Poison(STS2Power):
-    """중독 — 턴 종료 시 HP 손실, amount 감소."""
+    """중독 — 턴마다 amount만큼 HP 손실 후 1 감소.
+    상대가 Accelerant를 갖고 있으면 추가 발동 (min(amount, 1+Accelerant)회)."""
     power_id = "poison"
     name = "Poison"
     is_debuff = True
 
+    def _accelerant(self) -> int:
+        """상대 진영의 Accelerant 스택 합."""
+        combat = (getattr(self.owner, "combat", None)
+                  or getattr(self.owner, "combat_state", None))
+        if combat is None:
+            return 0
+        if self.owner is getattr(combat, "player", None):
+            return sum(e.get_power_amount("accelerant") for e in combat.alive_enemies)
+        return combat.player.get_power_amount("accelerant")
+
     def tick_duration(self) -> None:
-        """턴 종료 시 HP 손실."""
-        if self.owner and self.amount > 0:
+        if not (self.owner and self.amount > 0):
+            return
+        triggers = min(self.amount, 1 + self._accelerant())
+        for _ in range(triggers):
+            if self.amount <= 0 or self.owner.is_dead:
+                break
             self.owner.lose_hp(self.amount)
             self.amount -= 1
-            if self.amount <= 0:
-                self.remove()
+        if self.amount <= 0:
+            self.remove()
 
 
 class Thorns(STS2Power):
@@ -708,6 +723,368 @@ class Corruption(STS2Power):
 
 
 # ══════════════════════════════════════════
+# 카드 유래 파워 (Silent 카드 풀이 요구 — Phase 6c)
+# ══════════════════════════════════════════
+
+class Accelerant(STS2Power):
+    """촉진제 — 마커. Poison이 이 파워를 보고 추가 발동 (Poison.tick_duration)."""
+    power_id = "accelerant"
+    name = "Accelerant"
+    is_debuff = False
+
+
+class Accuracy(STS2Power):
+    """정확성 — Shiv 데미지 +amount (Shiv._damage에서 참조)."""
+    power_id = "accuracy"
+    name = "Accuracy"
+    is_debuff = False
+
+
+class Afterimage(STS2Power):
+    """잔상 — 카드 플레이마다 블록 +amount."""
+    power_id = "afterimage"
+    name = "Afterimage"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        if self.owner and self.amount > 0:
+            self.owner.gain_block(self.amount)
+
+
+class TempDexterity(STS2Power):
+    """임시 민첩 (AnticipatePower 등) — 이번 턴만 블록 +amount."""
+    power_id = "temp_dexterity"
+    name = "Temporary Dexterity"
+    is_debuff = False
+
+    def modify_block(self, amount: int) -> int:
+        return max(0, amount + self.amount)
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class Blur(STS2Power):
+    """흐릿함 — 턴 시작 시 블록이 사라지지 않음 (스택 1 감소).
+    블록 유지는 Creature.start_of_turn에서 검사."""
+    power_id = "blur"
+    name = "Blur"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class Burst(STS2Power):
+    """연속 발동 — 다음 amount장의 스킬 카드가 2회 발동 (combat.play_card 처리).
+    턴 종료 시 제거."""
+    power_id = "burst"
+    name = "Burst"
+    is_debuff = False
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class CorrosiveWave(STS2Power):
+    """부식의 파도 — 이번 턴 카드를 뽑을 때마다 모든 적에게 중독 amount. 턴 종료 시 제거."""
+    power_id = "corrosive_wave"
+    name = "Corrosive Wave"
+    is_debuff = False
+
+    def on_card_drawn(self, card, combat) -> None:
+        if self.amount <= 0:
+            return
+        for enemy in list(combat.alive_enemies):
+            enemy.apply_power(Poison(self.amount), applier=self.owner)
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class Envenom(STS2Power):
+    """독살 — 공격으로 비차단 피해를 줄 때마다 중독 amount (_deal_attack에서 처리)."""
+    power_id = "envenom"
+    name = "Envenom"
+    is_debuff = False
+
+
+class FanOfKnives(STS2Power):
+    """칼날의 부채 — Shiv가 전체 공격이 된다 (Shiv.use에서 참조)."""
+    power_id = "fan_of_knives"
+    name = "Fan of Knives"
+    is_debuff = False
+
+
+class InfiniteBlades(STS2Power):
+    """무한의 칼날 — 턴 시작마다 Shiv amount장 생성."""
+    power_id = "infinite_blades"
+    name = "Infinite Blades"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is not None and self.amount > 0:
+            combat.create_shivs(self.amount)
+
+
+class MasterPlanner(STS2Power):
+    """책략가 — 플레이한 스킬 카드에 Sly 부여 (영구)."""
+    power_id = "master_planner"
+    name = "Master Planner"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type == CardType.SKILL:
+            card.is_sly = True
+
+
+class Nightmare(STS2Power):
+    """악몽 — 다음 턴 시작 시 선택한 카드의 사본 amount장을 손패에."""
+    power_id = "nightmare"
+    name = "Nightmare"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.selected_card = None
+
+    def on_turn_start(self) -> None:
+        from sts2_sim.models.sts2_card import create_card
+        combat = getattr(self.owner, "combat", None)
+        if combat is not None and self.selected_card is not None:
+            for _ in range(self.amount):
+                clone = create_card(self.selected_card.card_id)
+                if clone:
+                    if self.selected_card.upgraded:
+                        clone.upgrade()
+                    combat.hand.append(clone)
+        self.remove()
+
+
+class NoxiousFumes(STS2Power):
+    """유독가스 — 턴 시작마다 모든 적에게 중독 amount."""
+    power_id = "noxious_fumes"
+    name = "Noxious Fumes"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is None or self.amount <= 0:
+            return
+        for enemy in list(combat.alive_enemies):
+            enemy.apply_power(Poison(self.amount), applier=self.owner)
+
+
+class Outbreak(STS2Power):
+    """창궐 — 적에게 중독을 걸 때마다 모든 적에게 amount 피해
+    (Creature.apply_power에서 트리거)."""
+    power_id = "outbreak"
+    name = "Outbreak"
+    is_debuff = False
+
+
+class PhantomBlades(STS2Power):
+    """환영 칼날 — Shiv에 Retain 부여, 매 턴 첫 Shiv 데미지 +amount."""
+    power_id = "phantom_blades"
+    name = "Phantom Blades"
+    is_debuff = False
+
+
+class SerpentForm(STS2Power):
+    """뱀의 형상 — 카드 플레이마다 무작위 적에게 amount 피해."""
+    power_id = "serpent_form"
+    name = "Serpent Form"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        if self.amount <= 0 or not combat.alive_enemies:
+            return
+        target = combat.rng.choice(combat.alive_enemies)
+        target.take_damage(self.amount, source=self.owner)
+
+
+class DoubleDamage(STS2Power):
+    """더블 데미지 — 이번 턴 공격 데미지 2배 (ShadowStep이 부여)."""
+    power_id = "double_damage"
+    name = "Double Damage"
+    is_debuff = False
+    damage_side = "outgoing"
+
+    def modify_damage(self, amount: int, is_attack: bool = True) -> int:
+        if is_attack and self.amount > 0:
+            return amount * 2
+        return amount
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class ShadowStep(STS2Power):
+    """그림자 밟기 — 다음 턴 시작 시 더블 데미지 amount 부여."""
+    power_id = "shadow_step"
+    name = "Shadow Step"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        if self.owner:
+            self.owner.apply_power(DoubleDamage(self.amount))
+        self.remove()
+
+
+class Shadowmeld(STS2Power):
+    """그림자 융화 — 이번 턴 블록 획득량 2^amount배."""
+    power_id = "shadowmeld"
+    name = "Shadowmeld"
+    is_debuff = False
+
+    def modify_block(self, amount: int) -> int:
+        if amount > 0 and self.amount > 0:
+            return amount * (2 ** self.amount)
+        return amount
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class Speedster(STS2Power):
+    """스피드스터 — 턴 시작 드로우 외 추가 드로우마다 모든 적에게 amount 피해."""
+    power_id = "speedster"
+    name = "Speedster"
+    is_debuff = False
+
+    def on_card_drawn(self, card, combat) -> None:
+        if self.amount <= 0 or getattr(combat, "in_hand_draw", False):
+            return
+        for enemy in list(combat.alive_enemies):
+            enemy.take_damage(self.amount, source=self.owner)
+
+
+class Strangle(STS2Power):
+    """교살 — (적에게 적용) 시전자가 카드를 플레이할 때마다 amount 비차단 피해.
+    combat.play_card에서 트리거, 적 턴 종료 tick에서 제거."""
+    power_id = "strangle"
+    name = "Strangle"
+    is_debuff = True
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class TheHunt(STS2Power):
+    """사냥 — 성공 표식 (실제 추가 보상은 TheHunt 카드/런 루프가 처리)."""
+    power_id = "the_hunt"
+    name = "The Hunt"
+    is_debuff = False
+
+
+class ToolsOfTheTrade(STS2Power):
+    """장인의 도구 — 턴 시작 드로우 +amount, 드로우 후 amount장 버리기."""
+    power_id = "tools_of_the_trade"
+    name = "Tools of the Trade"
+    is_debuff = False
+
+    def modify_hand_draw(self, count: int) -> int:
+        return count + self.amount
+
+    def after_hand_draw(self, combat) -> None:
+        combat.discard_from_hand(self.amount)
+
+
+class Tracking(STS2Power):
+    """추적 — 약화 상태의 적에게 주는 공격 데미지 +amount% (_deal_attack에서 처리)."""
+    power_id = "tracking"
+    name = "Tracking"
+    is_debuff = False
+
+
+class WellLaidPlans(STS2Power):
+    """치밀한 계획 — 턴 종료 시 카드 amount장을 유지 [선택→무작위]."""
+    power_id = "well_laid_plans"
+    name = "Well-Laid Plans"
+    is_debuff = False
+
+    def on_before_hand_discard(self, combat) -> None:
+        candidates = [c for c in combat.hand
+                      if not c.retains and not c._retain_this_turn
+                      and not c.is_ethereal]
+        combat.rng.shuffle(candidates)
+        for card in candidates[:self.amount]:
+            card._retain_this_turn = True
+
+
+class WraithFormPower(STS2Power):
+    """망령의 형상 (디버프) — 턴 시작마다 민첩 -amount."""
+    power_id = "wraith_form"
+    name = "Wraith Form"
+    is_debuff = True
+
+    def on_turn_start(self) -> None:
+        if self.owner and self.amount > 0:
+            self.owner.apply_power(Dexterity(-self.amount))
+
+
+class Intangible(STS2Power):
+    """비실체 — 받는 피해를 1로 제한. 적 턴 종료마다 1 감소."""
+    power_id = "intangible"
+    name = "Intangible"
+    is_debuff = False
+    damage_side = "incoming"
+
+    def modify_incoming(self, amount: int, source) -> int:
+        if self.amount > 0 and amount > 1:
+            return 1
+        return amount
+
+    def on_enemy_turn_end(self) -> None:
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class BlockNextTurn(STS2Power):
+    """다음 턴 블록 (DodgeAndRoll) — 턴 시작 시 amount 블록 획득 후 제거."""
+    power_id = "block_next_turn"
+    name = "Block Next Turn"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        if self.owner and self.amount > 0:
+            # 원본은 Unpowered 블록 (Dexterity 미적용)
+            self.owner._block += self.amount
+        self.remove()
+
+
+class DrawCardsNextTurn(STS2Power):
+    """다음 턴 드로우 +amount (Predator)."""
+    power_id = "draw_next_turn"
+    name = "Draw Cards Next Turn"
+    is_debuff = False
+
+    def modify_hand_draw(self, count: int) -> int:
+        bonus = self.amount
+        self.remove()
+        return count + bonus
+
+
+class FreeSkill(STS2Power):
+    """공짜 스킬 — 다음 amount장의 스킬 카드 비용 0 (Pounce).
+    차감은 combat.play_card에서 비용 지불 시점에 처리."""
+    power_id = "free_skill"
+    name = "Free Skill"
+    is_debuff = False
+
+    def modify_card_cost(self, card, cost: int) -> int:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type == CardType.SKILL:
+            return 0
+        return cost
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -742,6 +1119,37 @@ POWER_REGISTRY = {
     "vicious": Vicious,
     "free_attack": FreeAttack,
     "corruption": Corruption,
+    # Silent (Phase 6c)
+    "accelerant": Accelerant,
+    "accuracy": Accuracy,
+    "afterimage": Afterimage,
+    "temp_dexterity": TempDexterity,
+    "blur": Blur,
+    "burst": Burst,
+    "corrosive_wave": CorrosiveWave,
+    "envenom": Envenom,
+    "fan_of_knives": FanOfKnives,
+    "infinite_blades": InfiniteBlades,
+    "master_planner": MasterPlanner,
+    "nightmare": Nightmare,
+    "noxious_fumes": NoxiousFumes,
+    "outbreak": Outbreak,
+    "phantom_blades": PhantomBlades,
+    "serpent_form": SerpentForm,
+    "double_damage": DoubleDamage,
+    "shadow_step": ShadowStep,
+    "shadowmeld": Shadowmeld,
+    "speedster": Speedster,
+    "strangle": Strangle,
+    "the_hunt": TheHunt,
+    "tools_of_the_trade": ToolsOfTheTrade,
+    "tracking": Tracking,
+    "well_laid_plans": WellLaidPlans,
+    "wraith_form": WraithFormPower,
+    "intangible": Intangible,
+    "block_next_turn": BlockNextTurn,
+    "draw_next_turn": DrawCardsNextTurn,
+    "free_skill": FreeSkill,
     "dexterity": Dexterity,
     "vulnerable": Vulnerable,
     "weak": Weak,

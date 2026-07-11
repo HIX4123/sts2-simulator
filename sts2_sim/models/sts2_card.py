@@ -40,11 +40,25 @@ class Rarity(Enum):
     TOKEN = auto()
 
 
-def _deal_attack(source, target, base_damage: int) -> None:
-    """공격 데미지 파이프라인: 공격자 수정(Strength/Weak) → 피격 처리."""
+def _deal_attack(source, target, base_damage: int) -> dict:
+    """공격 데미지 파이프라인: 공격자 수정(Strength/Weak) → 피격 처리.
+    Tracking(약화 대상 +50%)/Envenom(비차단 피해 시 중독) 훅 포함."""
     calc = getattr(source, "compute_attack_damage", None)
     dmg = calc(base_damage) if calc else base_damage
-    target.take_damage(dmg, source=source)
+    # Tracking — 약화 상태의 대상에게 주는 공격 데미지 +amount%
+    if hasattr(source, "get_power_amount") and hasattr(target, "get_power_amount"):
+        tracking = source.get_power_amount("tracking")
+        if tracking > 0 and target.get_power_amount("weak") > 0:
+            dmg = int(dmg * (1 + tracking / 100))
+    result = target.take_damage(dmg, source=source)
+    # Envenom — 공격으로 비차단 피해를 주면 중독 부여
+    if (result.get("hp_lost", 0) > 0 and hasattr(source, "get_power_amount")
+            and hasattr(target, "apply_power")):
+        envenom = source.get_power_amount("envenom")
+        if envenom > 0 and not target.is_dead:
+            from sts2_sim.models.sts2_power import Poison
+            target.apply_power(Poison(envenom), applier=source)
+    return result
 
 
 class STS2Card:
@@ -61,6 +75,8 @@ class STS2Card:
     is_innate: bool = False   # 선천성 — 전투 첫 손패에 포함
     x_cost: bool = False      # X 코스트 (Whirlwind/Cascade) — 플레이 시 에너지 전부 소비
     tags: frozenset = frozenset()  # CardTag (예: "strike" — PerfectedStrike/Hellraiser 참조)
+    is_sly: bool = False      # Sly — 버려질 때(효과에 의한 버리기) 무료 자동 플레이
+    retains: bool = False     # Retain — 턴 종료 시 손패에 유지
 
     def __init__(self):
         self.upgraded = False
@@ -69,6 +85,11 @@ class STS2Card:
         self.cost = type(self).cost  # 인스턴스별 비용 (업그레이드로 변동 가능)
         self.x_value = 0             # X 코스트 카드가 소비한 에너지 (play_card가 설정)
         self.is_innate = type(self).is_innate  # 업그레이드로 Innate 부여 가능 (Aggression 등)
+        self.is_sly = type(self).is_sly        # MasterPlanner가 인스턴스에 부여 가능
+        self.retains = type(self).retains      # PhantomBlades가 Shiv에 부여 가능
+        self._sly_this_turn = False    # HandTrick — 이번 턴만 Sly
+        self._retain_this_turn = False  # WellLaidPlans — 이번 턴만 Retain
+        self._free_this_turn = False    # BulletTime — 이번 턴 비용 0
 
     def use(self, source, targets: List["Creature"], combat=None) -> None:
         """카드 사용. combat은 전투 컨텍스트 (드로우/오브 등 필요 시)."""
@@ -190,18 +211,53 @@ class Survivor(STS2Card):
 
 
 class Shiv(STS2Card):
-    """단검 — 0코스트 4딜, 소모 (업글 6딜). Token 카드."""
+    """단검 — 0코스트 4딜, 소모 (업글 6딜). Token 카드.
+    Accuracy(+amount딜), PhantomBlades(턴 첫 Shiv +amount딜),
+    FanOfKnives(전체 공격화), Inky 인챈트(+1딜, 약화 1) 연동."""
     card_id = "shiv"
     name = "Shiv"
     card_type = CardType.ATTACK
     rarity = Rarity.TOKEN
     cost = 0
     exhausts = True
+    tags = frozenset({"shiv"})
+
+    def __init__(self):
+        super().__init__()
+        self.inky = False  # BladeOfInk 생성물
+
+    def _damage(self, source, combat=None) -> int:
+        damage = 6 if self.upgraded else 4
+        if self.inky:
+            damage += 1
+        if hasattr(source, "get_power_amount"):
+            damage += source.get_power_amount("accuracy")
+            pb = source.get_power_amount("phantom_blades")
+            if pb > 0 and combat is not None \
+                    and getattr(combat, "shivs_played_this_turn", 0) == 0:
+                damage += pb
+        return damage
 
     def use(self, source, targets, combat=None) -> None:
-        damage = 6 if self.upgraded else 4
+        from sts2_sim.models.sts2_power import Weak
+        # FanOfKnives — Shiv가 전체 공격이 된다
+        if (combat is not None and hasattr(source, "get_power_amount")
+                and source.get_power_amount("fan_of_knives") > 0):
+            targets = list(combat.alive_enemies)
+        damage = self._damage(source, combat)
         for target in targets:
+            if getattr(target, "is_dead", False) or getattr(target, "is_gone", False):
+                continue
             _deal_attack(source, target, damage)
+            if self.inky and hasattr(target, "apply_power") \
+                    and not getattr(target, "is_dead", False):
+                target.apply_power(Weak(1), applier=source)
+        if combat is not None:
+            combat.shivs_played_this_turn = \
+                getattr(combat, "shivs_played_this_turn", 0) + 1
+
+    def damage_estimate(self, player, combat=None, target=None) -> int:
+        return self._damage(player, combat)
 
 
 class Acrobatics(STS2Card):
