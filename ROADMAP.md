@@ -66,9 +66,33 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 - [x] Poison 재작업: Accelerant 다중 발동 (원본 TriggerCount 로직)
 - [x] TheHunt 처치 → 런 루프 추가 카드 보상 배선
 
-## 📋 Phase 6d+ — 남은 확대 (계획)
+## ✅ Phase 6d — Defect 카드 풀 (완료)
 
-- [ ] 나머지 캐릭터 카드 풀 (Defect/Necrobinder/Regent/Colorless — 전체 593종 중 184종 이식)
+- [x] **Defect 카드 풀 완전 이식**: `DefectCardPool` 91종 중 싱글플레이 86종
+  (멀티 전용 EnergySurge/Hibernate/Ignition/ImitationLearning/OneForAll 5종 제외)
+  + Fuel 토큰(Compact 변환물) + Wound/Burn/Void 상태이상
+- [x] 카드 파워 22종 신규 배선 (EchoForm/Feral/Buffer/Storm/Subroutine/
+  Thunder/Loop/CreativeAI/TempFocus 등, 총 95종)
+- [x] 오브 엔진 확장: 슬롯 상한 10 + RemoveSlots(뒤에서부터 오브째 제거,
+  원본 OrbCmd), **EvokeLast**(ConsumingShadow), 수동 패시브 발동(대상 지정 —
+  TeslaCoil/Darkness/Loop), 이보크 훅 `after_orb_evoked`(Thunder),
+  채널 카운터(Voltaic), TempFocus 합산
+- [x] 전투 엔진 확장: **EchoForm**(턴 첫 N장 2회 발동, 플레이 시작 시점 스냅샷),
+  **SignalBoost**(파워 2회), **Feral**(0코스트 공격 손패 복귀), FreePower 비용
+  파이프라인, 전투 한정 비용 변형(SetThisCombat/AddThisCombat/SetUntilPlayed —
+  MomentumStrike/Modded/AdaptiveStrike/RocketPunch), 카드 생성 훅
+  `generate_card`(Smokestack/TrashToTreasure/RocketPunch — 몬스터 삽입 미발동),
+  AfterEnergyReset 훅(LightningRod/Spinner/EnergyNextTurn),
+  Burn 턴 종료 자해 / Void 드로우 에너지 손실, HP 손실 수정 파이프라인(Buffer)
+- [x] Claw 전투 한정 전체 스케일링 / GeneticAlgorithm 덱 레벨 영구 블록 성장
+- [x] 멀티에이전트 적대 검증 (9에이전트로 82카드+22파워를 디컴파일 원본과 배치 대조):
+  FeralPower 적용 시점 카운터 초기화 누락(원본 AfterApplied) 발견 → 수정,
+  Feral IsDupe 예외는 dupe 생성원(Duplication Potion 등) 미구현이라 관측 불가로 기록.
+  나머지 전 항목 일치. 오브 이보크 6종(MultiCast/Quadcast/Shatter/Voltaic/Barrage/Tempest)은 수동 재대조.
+
+## 📋 Phase 6e+ — 남은 확대 (계획)
+
+- [ ] 나머지 캐릭터 카드 풀 (Necrobinder/Regent/Colorless — 전체 593종 중 ~270종 이식)
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
@@ -95,6 +119,7 @@ python3 test_sts2_phase5.py       # 정책/통계
 python3 test_sts2_phase6.py       # 신규 몬스터/인카운터
 python3 test_sts2_phase6b.py      # Ironclad 카드 풀 85종
 python3 test_sts2_phase6c.py      # Silent 카드 풀 86종
+python3 test_sts2_phase6d.py      # Defect 카드 풀 86종 + 오브 엔진 확장
 ```
 
 **통계 실행:**

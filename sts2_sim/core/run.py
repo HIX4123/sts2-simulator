@@ -21,6 +21,7 @@ from sts2_sim.entities.sts2_character import create_character
 from sts2_sim.models.sts2_card import Rarity, create_card
 from sts2_sim.cards.ironclad import IRONCLAD_POOL_BY_RARITY
 from sts2_sim.cards.silent import SILENT_POOL_BY_RARITY
+from sts2_sim.cards.defect import DEFECT_POOL_BY_RARITY
 
 
 # 층 시퀀스: N1=쉬운 전투, N2=중간 전투, R=휴식, E=엘리트
@@ -28,7 +29,6 @@ DEFAULT_FLOOR_PLAN = ["N1", "N1", "R", "N2", "N2", "R", "E"]
 
 # 전투 보상 카드 풀 (캐릭터별 — 이식된 카드 한정)
 REWARD_POOLS = {
-    "Defect": ["zap", "dualcast", "strike", "defend"],
     "Necrobinder": ["bodyguard", "unleash", "strike", "defend"],
     "Regent": ["venerate", "falling_star", "strike", "defend"],
 }
@@ -45,6 +45,7 @@ RARITY_POOLS = {
         Rarity.RARE: IRONCLAD_POOL_BY_RARITY[Rarity.RARE],
     },
     "Silent": SILENT_POOL_BY_RARITY,
+    "Defect": DEFECT_POOL_BY_RARITY,
 }
 
 

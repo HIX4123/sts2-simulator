@@ -1085,6 +1085,351 @@ class FreeSkill(STS2Power):
 
 
 # ══════════════════════════════════════════
+# Defect 카드 파워 (Phase 6d)
+# ══════════════════════════════════════════
+
+class TempFocus(STS2Power):
+    """임시 집중 (TemporaryFocusPower) — 이번 턴만 Focus +amount.
+    FocusedStrike/Hotfix/Synchronize. 오브 _focus()가 focus+temp_focus를 합산."""
+    power_id = "temp_focus"
+    name = "Temporary Focus"
+    is_debuff = False
+
+    def tick_duration(self) -> None:
+        self.remove()
+
+
+class BiasedCognition(STS2Power):
+    """편향된 인지 (디버프) — 턴 시작마다 Focus -amount."""
+    power_id = "biased_cognition"
+    name = "Biased Cognition"
+    is_debuff = True
+
+    def on_turn_start(self) -> None:
+        if self.owner and self.amount > 0:
+            self.owner.apply_power(Focus(-self.amount))
+
+
+class Buffer(STS2Power):
+    """버퍼 — 다음 amount회의 HP 손실을 무효화 (원본 ModifyHpLostAfterOstyLate)."""
+    power_id = "buffer"
+    name = "Buffer"
+    is_debuff = False
+
+    def modify_hp_lost(self, amount: int) -> int:
+        if amount > 0 and self.amount > 0:
+            self.amount -= 1
+            if self.amount <= 0:
+                self.remove()
+            return 0
+        return amount
+
+
+class EnergyNextTurn(STS2Power):
+    """다음 턴 에너지 +amount (ChargeBattery/Scavenge — EnergyNextTurnPower)."""
+    power_id = "energy_next_turn"
+    name = "Energy Next Turn"
+    is_debuff = False
+
+    def after_energy_reset(self) -> None:
+        if self.owner:
+            self.owner.gain_energy(self.amount)
+        self.remove()
+
+
+class Coolant(STS2Power):
+    """냉각수 — 턴 시작마다 (보유 오브 종류 수 × amount) 블록 (Unpowered)."""
+    power_id = "coolant"
+    name = "Coolant"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        queue = getattr(self.owner, "orb_queue", None)
+        if queue is None:
+            return
+        kinds = len({o.orb_id for o in queue.orbs})
+        if kinds > 0:
+            self.owner._block += kinds * self.amount  # 원본 Unpowered — 민첩 미적용
+
+
+class ConsumingShadow(STS2Power):
+    """어둠 포식 — 턴 종료 시 가장 최근 오브를 amount회 이보크 (OrbCmd.EvokeLast)."""
+    power_id = "consuming_shadow"
+    name = "Consuming Shadow"
+    is_debuff = False
+
+    def on_turn_end(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        queue = getattr(self.owner, "orb_queue", None)
+        if combat is None or queue is None or len(queue) == 0:
+            return
+        for _ in range(self.amount):
+            queue.evoke_last(combat)
+
+
+class CreativeAI(STS2Power):
+    """창의적 AI — 매 턴 드로우 전에 무작위 파워 카드 amount장을 손패에 생성."""
+    power_id = "creative_ai"
+    name = "Creative AI"
+    is_debuff = False
+
+    def before_hand_draw(self, combat) -> None:
+        from sts2_sim.cards.defect import DEFECT_POWER_CARD_IDS
+        from sts2_sim.models.sts2_card import create_card
+        for _ in range(self.amount):
+            if len(combat.hand) >= 10:
+                break
+            card = create_card(combat.rng.choice(DEFECT_POWER_CARD_IDS))
+            if card:
+                combat.hand.append(card)
+
+
+class EchoForm(STS2Power):
+    """메아리 형상 — 매 턴 처음 amount장의 카드를 2회 발동 (원본 ModifyCardPlayCount).
+    발동 판정은 combat.play_card에서 처리."""
+    power_id = "echo_form"
+    name = "Echo Form"
+    is_debuff = False
+
+
+class Feral(STS2Power):
+    """야성 — 매 턴 처음 amount장의 0코스트 공격 카드가 손패로 되돌아온다.
+    (원본 ModifyCardPlayResultPileTypeAndPosition — 판정은 combat._settle_card)
+    적용 시 used_this_turn은 이번 턴 이미 플레이한 0코스트 공격 수로 초기화된다
+    (원본 AfterApplied — FeralCard.use에서 배선)."""
+    power_id = "feral"
+    name = "Feral"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.used_this_turn = 0
+
+    def on_turn_start(self) -> None:
+        self.used_this_turn = 0
+
+
+class Hailstorm(STS2Power):
+    """우박 폭풍 — 턴 종료 시 서리 오브를 1개 이상 보유하면 전체 적에게 amount 피해."""
+    power_id = "hailstorm"
+    name = "Hailstorm"
+    is_debuff = False
+
+    def on_turn_end(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        queue = getattr(self.owner, "orb_queue", None)
+        if combat is None or queue is None:
+            return
+        if any(o.orb_id == "frost" for o in queue.orbs):
+            for enemy in list(combat.alive_enemies):
+                enemy.take_damage(self.amount, source=self.owner)  # Unpowered
+
+
+class Iteration(STS2Power):
+    """반복 — 매 턴 첫 상태이상 카드를 드로우하면 카드 amount장 드로우."""
+    power_id = "iteration"
+    name = "Iteration"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._statuses_drawn_this_turn = 0
+
+    def on_turn_start(self) -> None:
+        self._statuses_drawn_this_turn = 0
+
+    def on_card_drawn(self, card, combat) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type != CardType.STATUS:
+            return
+        self._statuses_drawn_this_turn += 1
+        if self._statuses_drawn_this_turn == 1:
+            combat.draw_cards(self.amount)
+
+
+class LightningRod(STS2Power):
+    """피뢰침 — 에너지 리셋 직후 라이트닝 오브 채널, 스택 1 감소."""
+    power_id = "lightning_rod"
+    name = "Lightning Rod"
+    is_debuff = False
+
+    def after_energy_reset(self) -> None:
+        from sts2_sim.models.sts2_orb import LightningOrb
+        combat = getattr(self.owner, "combat", None)
+        queue = getattr(self.owner, "orb_queue", None)
+        if queue is not None:
+            queue.channel(LightningOrb(), self.owner, combat)
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class Loop(STS2Power):
+    """루프 — 턴 시작 시 선두 오브의 패시브를 amount회 발동."""
+    power_id = "loop"
+    name = "Loop"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        queue = getattr(self.owner, "orb_queue", None)
+        if combat is None or queue is None or len(queue) == 0:
+            return
+        for _ in range(self.amount):
+            if not queue.orbs:
+                break
+            queue.orbs[0].passive(combat)
+
+
+class MachineLearning(STS2Power):
+    """기계 학습 — 매 턴 드로우 +amount."""
+    power_id = "machine_learning"
+    name = "Machine Learning"
+    is_debuff = False
+
+    def modify_hand_draw(self, count: int) -> int:
+        return count + self.amount
+
+
+class SignalBoost(STS2Power):
+    """신호 증폭 — 다음 amount장의 파워 카드를 2회 발동 (combat.play_card에서 차감)."""
+    power_id = "signal_boost"
+    name = "Signal Boost"
+    is_debuff = False
+
+
+class Smokestack(STS2Power):
+    """굴뚝 — 내가 상태이상 카드를 생성할 때마다 전체 적에게 amount 피해 (Unpowered)."""
+    power_id = "smokestack"
+    name = "Smokestack"
+    is_debuff = False
+
+    def on_card_generated(self, card, combat) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type != CardType.STATUS:
+            return
+        for enemy in list(combat.alive_enemies):
+            enemy.take_damage(self.amount, source=self.owner)
+
+
+class Spinner(STS2Power):
+    """물레 — 에너지 리셋 직후 유리 오브 amount개 채널."""
+    power_id = "spinner"
+    name = "Spinner"
+    is_debuff = False
+
+    def after_energy_reset(self) -> None:
+        from sts2_sim.models.sts2_orb import GlassOrb
+        combat = getattr(self.owner, "combat", None)
+        queue = getattr(self.owner, "orb_queue", None)
+        if queue is None:
+            return
+        for _ in range(self.amount):
+            queue.channel(GlassOrb(), self.owner, combat)
+
+
+class _PowerCardTrigger(STS2Power):
+    """파워 카드 플레이 트리거 공통 — 자신을 부여한 그 플레이에는 미발동
+    (원본 Storm/Subroutine의 BeforeCardPlayed 기록 방식 대응)."""
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._skip_next = False
+
+    def apply(self, owner, applier=None) -> None:
+        fresh = self.power_id not in owner._powers
+        super().apply(owner, applier)
+        if fresh:
+            owner._powers[self.power_id]._skip_next = True
+
+    def on_card_played(self, card, combat) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type != CardType.POWER:
+            return
+        if self._skip_next:
+            self._skip_next = False
+            return
+        self._trigger(combat)
+
+    def _trigger(self, combat) -> None:
+        pass
+
+
+class Storm(_PowerCardTrigger):
+    """폭풍 — 파워 카드를 플레이할 때마다 라이트닝 오브 amount개 채널."""
+    power_id = "storm"
+    name = "Storm"
+    is_debuff = False
+
+    def _trigger(self, combat) -> None:
+        from sts2_sim.models.sts2_orb import LightningOrb
+        queue = getattr(self.owner, "orb_queue", None)
+        if queue is None:
+            return
+        for _ in range(self.amount):
+            queue.channel(LightningOrb(), self.owner, combat)
+
+
+class Subroutine(_PowerCardTrigger):
+    """서브루틴 — 파워 카드를 플레이할 때마다 에너지 +amount."""
+    power_id = "subroutine"
+    name = "Subroutine"
+    is_debuff = False
+
+    def _trigger(self, combat) -> None:
+        if self.owner:
+            self.owner.gain_energy(self.amount)
+
+
+class Thunder(STS2Power):
+    """천둥 — 라이트닝 오브가 이보크될 때마다 그 대상에게 amount 추가 피해."""
+    power_id = "thunder"
+    name = "Thunder"
+    is_debuff = False
+
+    def after_orb_evoked(self, orb, targets, combat) -> None:
+        if orb.orb_id != "lightning":
+            return
+        for target in targets:
+            if not getattr(target, "is_dead", False):
+                target.take_damage(self.amount, source=self.owner)  # Unpowered
+
+
+class TrashToTreasure(STS2Power):
+    """쓰레기를 보물로 — 내가 상태이상 카드를 생성할 때마다 무작위 오브 amount개 채널."""
+    power_id = "trash_to_treasure"
+    name = "Trash to Treasure"
+    is_debuff = False
+
+    def on_card_generated(self, card, combat) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        from sts2_sim.models.sts2_orb import ORB_REGISTRY
+        if card.card_type != CardType.STATUS:
+            return
+        queue = getattr(self.owner, "orb_queue", None)
+        if queue is None:
+            return
+        orb_ids = sorted(ORB_REGISTRY)  # 원본 _validOrbs 5종 전체
+        for _ in range(self.amount):
+            orb_cls = ORB_REGISTRY[combat.rng.choice(orb_ids)]
+            queue.channel(orb_cls(), self.owner, combat)
+
+
+class FreePower(STS2Power):
+    """공짜 파워 (Synthesis — FreePowerPower) — 다음 amount장의 파워 카드 비용 0.
+    차감은 combat.play_card에서 비용 지불 시점에 처리."""
+    power_id = "free_power"
+    name = "Free Power"
+    is_debuff = False
+
+    def modify_card_cost(self, card, cost: int) -> int:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type == CardType.POWER:
+            return 0
+        return cost
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -1150,6 +1495,29 @@ POWER_REGISTRY = {
     "block_next_turn": BlockNextTurn,
     "draw_next_turn": DrawCardsNextTurn,
     "free_skill": FreeSkill,
+    # Defect (Phase 6d)
+    "temp_focus": TempFocus,
+    "biased_cognition": BiasedCognition,
+    "buffer": Buffer,
+    "energy_next_turn": EnergyNextTurn,
+    "coolant": Coolant,
+    "consuming_shadow": ConsumingShadow,
+    "creative_ai": CreativeAI,
+    "echo_form": EchoForm,
+    "feral": Feral,
+    "hailstorm": Hailstorm,
+    "iteration": Iteration,
+    "lightning_rod": LightningRod,
+    "loop": Loop,
+    "machine_learning": MachineLearning,
+    "signal_boost": SignalBoost,
+    "smokestack": Smokestack,
+    "spinner": Spinner,
+    "storm": Storm,
+    "subroutine": Subroutine,
+    "thunder": Thunder,
+    "trash_to_treasure": TrashToTreasure,
+    "free_power": FreePower,
     "dexterity": Dexterity,
     "vulnerable": Vulnerable,
     "weak": Weak,

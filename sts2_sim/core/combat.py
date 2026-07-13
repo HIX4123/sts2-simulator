@@ -53,6 +53,10 @@ class CombatState:
         self.cards_drawn_this_combat = 0    # Murder
         self.extra_card_rewards = 0         # TheHunt — 런 루프가 소비
         self.in_hand_draw = False           # Speedster — 턴 시작 드로우 구분
+        self.cards_played_this_turn = 0     # Ftl / EchoForm
+        self.energy_spent_this_turn = 0     # HelixDrill
+        self.zero_cost_attacks_this_turn = 0  # Feral AfterApplied 집계
+        self.lightning_channeled_this_combat = 0  # Voltaic
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -75,8 +79,11 @@ class CombatState:
             card = self.draw_pile.pop()
             self.hand.append(card)
             self.cards_drawn_this_combat += 1
-            # Hellraiser 자동 플레이 / CorrosiveWave 중독 / Speedster 피해
+            # Hellraiser 자동 플레이 / CorrosiveWave 중독 / Speedster 피해 / Iteration
             self.notify_player_powers("on_card_drawn", card, self)
+            on_drawn = getattr(card, "on_drawn", None)  # Void — 드로우 시 에너지 -1
+            if on_drawn:
+                on_drawn(self)
 
     def discard_card(self, card: "STS2Card") -> None:
         """카드 1장 버리기 (효과에 의한 버리기): Sly면 무료 자동 플레이."""
@@ -156,20 +163,55 @@ class CombatState:
             self._exhaust_card(card)
         return len(cards)
 
-    def add_status_to_discard(self, card_id: str, count: int) -> None:
-        """몬스터가 상태이상 카드를 버림 더미에 삽입 (Dazed/Slimed)."""
+    def generate_card(self, card_id: str, count: int = 1, upgraded: bool = False,
+                      to: str = "discard", creator_is_player: bool = True) -> List["STS2Card"]:
+        """전투 중 카드 생성 (AddGeneratedCardToCombat 대응).
+        플레이어가 생성했으면 파워 훅(Smokestack/TrashToTreasure)과
+        카드 훅 on_card_generated_combat(RocketPunch)에 통지."""
+        made = []
         for _ in range(count):
             card = create_card(card_id)
-            if card:
+            if card is None:
+                continue
+            if upgraded:
+                card.upgrade()
+            if to == "hand" and len(self.hand) < 10:
+                self.hand.append(card)
+            elif to == "draw":
+                self.draw_pile.append(card)
+            else:
                 self.discard_pile.append(card)
+            made.append(card)
+            if creator_is_player:
+                self.notify_player_powers("on_card_generated", card, self)
+                for pile in (self.hand, self.draw_pile, self.discard_pile):
+                    for c in pile:
+                        hook = getattr(c, "on_card_generated_combat", None)
+                        if hook:
+                            hook(card, self)
+        return made
+
+    def record_orb_channel(self, orb) -> None:
+        """오브 채널 기록 (Voltaic — 이번 전투 라이트닝 채널 수)."""
+        if orb.orb_id == "lightning":
+            self.lightning_channeled_this_combat += 1
+
+    def add_status_to_discard(self, card_id: str, count: int) -> None:
+        """몬스터가 상태이상 카드를 버림 더미에 삽입 (Dazed/Slimed) — 생성 훅 미발동."""
+        self.generate_card(card_id, count=count, creator_is_player=False)
 
     def get_card_cost(self, card: "STS2Card") -> int:
         """실효 비용: 파워(FreeAttack/Corruption)의 비용 수정 반영. X코스트는 0(최소)."""
         if card.x_cost:
             return 0
-        if card._free_this_turn:  # BulletTime
+        if card._free_this_turn:  # BulletTime / WhiteNoise
+            return 0
+        if card._free_until_played:  # RocketPunch — 상태이상 생성 시 0
             return 0
         cost = card.cost
+        if card._cost_this_combat is not None:  # SetThisCombat (MomentumStrike 등)
+            cost = card._cost_this_combat
+        cost += card._cost_add_this_combat       # AddThisCombat (Modded)
         dynamic = getattr(card, "dynamic_cost", None)  # Stomp — 상태 의존 비용
         if dynamic:
             cost = dynamic(self)
@@ -221,7 +263,12 @@ class CombatState:
             self.skills_played_this_turn = 0
             self.cards_discarded_this_turn = 0
             self.shivs_played_this_turn = 0
+            self.cards_played_this_turn = 0
+            self.energy_spent_this_turn = 0
+            self.zero_cost_attacks_this_turn = 0
             self.player.energy = self.player.max_energy
+            # EnergyNextTurn/LightningRod/Spinner (원본 AfterEnergyReset)
+            self.notify_player_powers("after_energy_reset")
             for relic in self.player.relics:
                 relic.on_turn_start(self, self.turn)
             for power in list(self.player._powers.values()):
@@ -244,6 +291,7 @@ class CombatState:
                 modify = getattr(power, "modify_hand_draw", None)
                 if modify:  # ToolsOfTheTrade / DrawCardsNextTurn
                     draw_count = modify(draw_count)
+            self.notify_player_powers("before_hand_draw", self)  # CreativeAI 파워 카드 생성
             self.in_hand_draw = True
             self.draw_cards(draw_count)
             self.in_hand_draw = False
@@ -310,11 +358,20 @@ class CombatState:
             return False
 
         if card.x_cost:
-            card.x_value = self.player.energy  # X = 남은 에너지 전부 소비
+            paid = self.player.energy
+            card.x_value = paid  # X = 남은 에너지 전부 소비
             self.player.energy = 0
         else:
-            self.player.energy -= self.get_card_cost(card)
+            paid = self.get_card_cost(card)
+            self.player.energy -= paid
         self.player.stars -= card.star_cost
+        card._last_paid = paid              # Feral 판정
+        card._free_until_played = False     # RocketPunch — 플레이로 소모
+        self.energy_spent_this_turn += paid
+        prior_plays = self.cards_played_this_turn  # EchoForm — 이번 턴 몇 번째 플레이인지
+        self.cards_played_this_turn += 1
+        if card.card_type == CardType.ATTACK and paid == 0:
+            self.zero_cost_attacks_this_turn += 1  # 원본 CardPlayStartedEntry(EnergyValue==0, Attack)
 
         # 카드는 효과 처리 전에 핸드를 떠난다 (효과 중 핸드 버리기가 자신을 버리지 않도록)
         self.hand.remove(card)
@@ -335,6 +392,18 @@ class CombatState:
                 fs.amount -= 1
                 if fs.amount <= 0:
                     fs.remove()
+        elif card.card_type == CardType.POWER:
+            # FreePower(Synthesis) — 효과 처리 전에 스택 차감
+            if self.player.get_power_amount("free_power") > 0:
+                fp = self.player._powers["free_power"]
+                fp.amount -= 1
+                if fp.amount <= 0:
+                    fp.remove()
+
+        # 원본 ModifyCardPlayCount는 플레이 시작 시점 기준 — 이 플레이로
+        # 부여된 파워(EchoForm/SignalBoost 자신)는 이번 플레이에 미적용
+        echo_before = self.player.get_power_amount("echo_form")
+        signal_boost_before = self.player.get_power_amount("signal_boost")
 
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
@@ -359,6 +428,21 @@ class CombatState:
                 burst.remove()
             card.use(self.player, [], self)
 
+        # SignalBoost — 파워 카드 2회 발동
+        if card.card_type == CardType.POWER and signal_boost_before > 0:
+            sb = self.player._powers.get("signal_boost")
+            if sb is not None:
+                sb.amount -= 1
+                if sb.amount <= 0:
+                    sb.remove()
+            card.use(self.player, [], self)
+
+        # EchoForm — 매 턴 처음 N장의 카드 2회 발동
+        if prior_plays < echo_before:
+            retargets = [t for t in self._resolve_targets(card, target) if not t.is_gone]
+            if retargets or card.card_type != CardType.ATTACK:
+                card.use(self.player, retargets, self)
+
         self._settle_card(card)
 
         for relic in self.player.relics:
@@ -380,6 +464,16 @@ class CombatState:
         card._sly_this_turn = False
         if card.card_type == CardType.POWER:
             return  # 파워 카드는 플레이 시 전투에서 사라진다
+        # Feral — 매 턴 처음 N장의 0코스트 공격은 손패로 (원본은 소모보다 우선)
+        # 원본은 !card.IsDupe 조건도 있으나, dupe(복제) 생성원(Duplication Potion 등)은
+        # 미구현이라 관측 불가 — AdaptiveStrike는 CreateClone(비-dupe)이라 복귀가 정상.
+        if card.card_type == CardType.ATTACK and card._last_paid == 0:
+            feral = self.player._powers.get("feral")
+            if (feral is not None and feral.used_this_turn < feral.amount
+                    and len(self.hand) < 10):
+                feral.used_this_turn += 1
+                self.hand.append(card)
+                return
         if (force_exhaust or card.exhausts
                 or (card.card_type == CardType.SKILL
                     and self.player.has_power("corruption"))):
@@ -399,8 +493,11 @@ class CombatState:
             if self.alive_enemies else None
         if card.x_cost:
             card.x_value = 0  # X코스트 자동 플레이는 X=0 (원본 AutoPlay 동일)
+        card._last_paid = 0  # 자동 플레이는 에너지 미지불 (Feral 판정 대상)
+        self.cards_played_this_turn += 1
         if card.card_type == CardType.ATTACK:
             self.attacks_played_this_turn += 1
+            self.zero_cost_attacks_this_turn += 1  # 원본 CardPlayStartedEntry(EnergyValue==0)
         elif card.card_type == CardType.SKILL:
             self.skills_played_this_turn += 1
         targets = self._resolve_targets(card, target)
@@ -414,6 +511,10 @@ class CombatState:
     def _discard_hand(self) -> None:
         """턴 종료 핸드 정리. 에테리얼은 소모, Retain 카드는 유지."""
         self.notify_player_powers("on_before_hand_discard", self)  # WellLaidPlans
+        for card in list(self.hand):
+            hook = getattr(card, "on_turn_end_in_hand", None)  # Burn 자해
+            if hook:
+                hook(self.player, self)
         cards = list(self.hand)
         self.hand = []
         for card in cards:
@@ -437,6 +538,12 @@ class CombatState:
                 card.retains = type(card).retains
                 card._free_this_turn = card._sly_this_turn = False
                 card._retain_this_turn = False
+                card._free_until_played = False
+                card._cost_this_combat = None
+                card._cost_add_this_combat = 0
+                reset = getattr(card, "reset_combat_state", None)  # Claw 누적 데미지
+                if reset:
+                    reset()
         for relic in self.player.relics:
             relic.on_combat_end(victory)
         self.player.sync_to_character()

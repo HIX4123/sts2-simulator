@@ -145,6 +145,11 @@ class Creature:
 
     def lose_hp(self, amount: int, from_damage: bool = False) -> int:
         """HP 감소. from_damage=False(카드/자해)일 때만 on_hp_lost 트리거 (Rupture)."""
+        # Buffer 등 HP 손실 수정 파이프라인 (원본 ModifyHpLostAfterOstyLate)
+        for p in list(self._powers.values()):
+            modify = getattr(p, "modify_hp_lost", None)
+            if modify:
+                amount = modify(amount)
         actual = min(max(0, amount), self._current_hp)
         self._current_hp -= actual
         if actual > 0:

@@ -90,6 +90,10 @@ class STS2Card:
         self._sly_this_turn = False    # HandTrick — 이번 턴만 Sly
         self._retain_this_turn = False  # WellLaidPlans — 이번 턴만 Retain
         self._free_this_turn = False    # BulletTime — 이번 턴 비용 0
+        self._cost_this_combat: Optional[int] = None  # SetThisCombat (MomentumStrike 등)
+        self._cost_add_this_combat = 0  # AddThisCombat (Modded 누진 비용)
+        self._free_until_played = False  # SetUntilPlayed(0) (RocketPunch)
+        self._last_paid = 0             # 직전 플레이에 지불한 에너지 (Feral 판정)
 
     def use(self, source, targets: List["Creature"], combat=None) -> None:
         """카드 사용. combat은 전투 컨텍스트 (드로우/오브 등 필요 시)."""
@@ -435,6 +439,46 @@ class Slimed(STS2Card):
     exhausts = True
 
 
+class Wound(STS2Card):
+    """상처 — 사용 불가, 효과 없음 (FightThrough 등)."""
+    card_id = "wound"
+    name = "Wound"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 0
+    playable = False
+
+
+class Burn(STS2Card):
+    """화상 — 사용 불가, 턴 종료 시 손패에 있으면 2 피해 (Unpowered, 블록 적용)."""
+    card_id = "burn"
+    name = "Burn"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 0
+    playable = False
+
+    def on_turn_end_in_hand(self, source, combat) -> None:
+        source.take_damage(2, source=None)
+
+
+class Void(STS2Card):
+    """공허 — 사용 불가, 에테리얼, 드로우 시 에너지 -1 (Turbo)."""
+    card_id = "void"
+    name = "Void"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 0
+    playable = False
+
+    def __init__(self):
+        super().__init__()
+        self.is_ethereal = True
+
+    def on_drawn(self, combat) -> None:
+        combat.player.energy = max(0, combat.player.energy - 1)
+
+
 # ══════════════════════════════════════════
 # 카드 팩토리
 # ══════════════════════════════════════════
@@ -463,6 +507,9 @@ CARD_REGISTRY = {
     # 상태이상
     "dazed": Dazed,
     "slimed": Slimed,
+    "wound": Wound,
+    "burn": Burn,
+    "void": Void,
 }
 
 

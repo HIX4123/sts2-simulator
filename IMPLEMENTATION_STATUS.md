@@ -10,11 +10,11 @@
 | 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
 | 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 178종 | **Ironclad 85종 + Silent 86종 완전 이식** + 스타터/상태이상 (STS2 전체 593종) |
-| 파워 | 73종 | 카드 파워 52종 포함 — 비용 수정/자동 플레이/소모·버리기 훅 배선 완료 |
+| 카드 | 264종 | **Ironclad 85 + Silent 86 + Defect 86종 완전 이식** + 스타터/상태이상/토큰 (STS2 전체 593종) |
+| 파워 | 95종 | 카드 파워 74종 포함 — 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
-| 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue |
-| 테스트 | 9개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
+| 테스트 | 10개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -27,13 +27,14 @@ sts2_sim/
 │  ├─ sts2_monster.py    # MonsterModel + 상태 머신 + 기본 17종
 │  └─ monsters_extra.py  # Phase 6a 추가 17종
 ├─ models/
-│  ├─ sts2_power.py      # 파워 73종
-│  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종
+│  ├─ sts2_power.py      # 파워 95종
+│  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종 + 상태이상 5종
 │  ├─ sts2_relic.py      # 렐릭 22종
-│  └─ sts2_orb.py        # 오브 5종 + OrbQueue
+│  └─ sts2_orb.py        # 오브 5종 + OrbQueue (상한 10/EvokeLast/이보크 훅)
 ├─ cards/
 │  ├─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
-│  └─ silent.py          # Phase 6c: Silent 풀 80종 (C19/U34/R25/Ancient2)
+│  ├─ silent.py          # Phase 6c: Silent 풀 80종 (C19/U34/R25/Ancient2)
+│  └─ defect.py          # Phase 6d: Defect 풀 83종 (C20/U35/R25/Ancient2/Token1)
 └─ core/
    ├─ combat.py          # 턴 루프 + SimplePolicy
    ├─ policy.py          # GreedyPolicy (인텐트 인지)
@@ -84,6 +85,9 @@ Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
 실제 맵 그래프·렐릭 풀 이식(Phase 6d+)에서 재측정 예정.
 **Phase 6c Silent 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 4.8/7 (HP 70으로
 Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병목 동일.
+**Phase 6d Defect 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 5.5/7,
+사망의 80%가 동일한 최종 엘리트(사망 층 분포 {F3:3, F4:3, F6:24}) → 병목 동일.
+그리디 정책이 오브 셋업 가치를 저평가하는 한계 포함 (채널 카드 estimate 미반영).
 
 ## 🃏 Ironclad 카드 풀 (Phase 6b)
 
@@ -127,6 +131,37 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
 - **단순화 표기:** 카드 선택 UI 효과(DaggerThrow/Prepared/HandTrick/Nightmare/
   WellLaidPlans/ToolsOfTheTrade)는 무작위 선택 `[선택→무작위]`
 
+## 🔌 Defect 카드 풀 (Phase 6d)
+
+디컴파일 `DefectCardPool` 91종 중 싱글플레이 86종 전량 이식
+(멀티 전용 EnergySurge/Hibernate/Ignition/ImitationLearning/OneForAll 제외).
++ Fuel 토큰(Compact 변환물) + Wound/Burn/Void 상태이상 3종.
+
+- **오브 엔진 확장:** OrbQueue 슬롯 상한 10 + `RemoveSlots`(뒤에서부터 오브째 제거,
+  원본 OrbCmd 대응 — BulkUp), **EvokeLast**(가장 최근 오브 발동 — ConsumingShadow),
+  수동 패시브 발동(대상 지정 — TeslaCoil/Darkness/Loop), 이보크 훅
+  `after_orb_evoked`(Thunder), 라이트닝 채널 카운터(Voltaic), TempFocus 합산
+  (`_focus()` = focus + temp_focus), 채널 시 슬롯 0·기본 슬롯 0이면 자동 1슬롯 추가/
+  Defect는 미추가·가득 차면 선두 이보크(원본 Channel 규칙)
+- **신규 파워 22종:** TempFocus, BiasedCognition, Buffer, EnergyNextTurn, Coolant,
+  ConsumingShadow, CreativeAI, EchoForm, Feral, Hailstorm, Iteration, LightningRod,
+  Loop, MachineLearning, SignalBoost, Smokestack, Spinner, Storm, Subroutine, Thunder,
+  TrashToTreasure, FreePower (총 95종)
+- **전투 엔진 확장:** **EchoForm/SignalBoost**(턴 첫 N장/다음 파워 2회 발동 —
+  플레이 시작 시점 스냅샷으로 자기 자신 미중복), **Feral**(0코스트 공격을 손패로 복귀,
+  턴당 상한), FreePower 비용 파이프라인, 전투 한정 비용 변형
+  (SetThisCombat/AddThisCombat/SetUntilPlayed — MomentumStrike/Modded/
+  AdaptiveStrike/RocketPunch), 카드 생성 훅 `generate_card`(Smokestack/
+  TrashToTreasure/RocketPunch — **몬스터 삽입 경로는 미발동**),
+  AfterEnergyReset 훅(LightningRod/Spinner/EnergyNextTurn),
+  Burn 턴 종료 자해(2)/Void 드로우 시 에너지 -1, HP 손실 수정 파이프라인(Buffer)
+- **오브 이보크 정합성:** MultiCast/Quadcast는 선두 오브를 X·4회 발동하되
+  마지막에만 dequeue, Shatter는 각 오브를 2회(비제거→제거) 발동
+  (전부 원본 `OrbCmd.EvokeNext(dequeue)` 타이밍 그대로)
+- **덱 레벨 영구 상태:** Claw 전투 한정 전체 스케일링(`reset_combat_state`),
+  GeneticAlgorithm 덱 레벨 영구 블록 성장(런 전체 유지)
+- **단순화 표기:** 카드 선택 UI 효과(Hologram/Scavenge)는 무작위 선택 `[선택→무작위]`
+
 ## 🔬 생성 방법론 (Phase 6a)
 
 몬스터 17종은 멀티에이전트 파이프라인으로 이식:
@@ -137,6 +172,6 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6d+ 참조 — 나머지 캐릭터 카드 풀(Defect/Necrobinder/Regent/Colorless),
+ROADMAP.md의 Phase 6e+ 참조 — 나머지 캐릭터 카드 풀(Necrobinder/Regent/Colorless),
 몬스터 잔여 ~87종, 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage),
 Ascension, 실제 맵 그래프.

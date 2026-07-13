@@ -35,7 +35,10 @@ class STS2Orb:
         if not self.affected_by_focus or self.owner is None:
             return 0
         getter = getattr(self.owner, "get_power_amount", None)
-        return getter("focus") if getter else 0
+        if not getter:
+            return 0
+        # TempFocus(FocusedStrike/Hotfix/Synchronize)는 별도 파워로 합산
+        return getter("focus") + getter("temp_focus")
 
     @property
     def passive_val(self) -> int:
@@ -47,13 +50,13 @@ class STS2Orb:
         """이보크 값 (Focus 반영)."""
         return max(0, self.base_evoke + self._focus())
 
-    def passive(self, combat) -> None:
-        """패시브 발동 (서브클래스 구현)."""
+    def passive(self, combat, target=None) -> None:
+        """패시브 발동 (서브클래스 구현). target은 수동 발동용 (TeslaCoil)."""
         pass
 
-    def evoke(self, combat) -> None:
-        """이보크 발동 (서브클래스 구현)."""
-        pass
+    def evoke(self, combat) -> list:
+        """이보크 발동 (서브클래스 구현). 타격한 대상 리스트 반환 (Thunder 훅용)."""
+        return []
 
     def __repr__(self) -> str:
         return self.name
@@ -66,18 +69,20 @@ class LightningOrb(STS2Orb):
     base_passive = 3
     base_evoke = 8
 
-    def _hit_random(self, combat, amount: int) -> None:
+    def _hit_random(self, combat, amount: int, target=None) -> list:
         enemies = [e for e in combat.alive_enemies if not e.is_dead]
         if not enemies:
-            return
-        target = combat.rng.choice(enemies)
+            return []
+        if target is None or target.is_dead:
+            target = combat.rng.choice(enemies)
         target.take_damage(amount, source=self.owner)
+        return [target]
 
-    def passive(self, combat) -> None:
-        self._hit_random(combat, self.passive_val)
+    def passive(self, combat, target=None) -> None:
+        self._hit_random(combat, self.passive_val, target)
 
-    def evoke(self, combat) -> None:
-        self._hit_random(combat, self.evoke_val)
+    def evoke(self, combat) -> list:
+        return self._hit_random(combat, self.evoke_val)
 
 
 class FrostOrb(STS2Orb):
@@ -87,13 +92,14 @@ class FrostOrb(STS2Orb):
     base_passive = 2
     base_evoke = 5
 
-    def passive(self, combat) -> None:
+    def passive(self, combat, target=None) -> None:
         if self.owner:
             self.owner.gain_block(self.passive_val)
 
-    def evoke(self, combat) -> None:
+    def evoke(self, combat) -> list:
         if self.owner:
             self.owner.gain_block(self.evoke_val)
+        return []
 
 
 class DarkOrb(STS2Orb):
@@ -112,15 +118,16 @@ class DarkOrb(STS2Orb):
         """누적된 이보크값 (Focus는 패시브 증가분에만 반영됨)."""
         return self._accumulated_evoke
 
-    def passive(self, combat) -> None:
+    def passive(self, combat, target=None) -> None:
         self._accumulated_evoke += self.passive_val
 
-    def evoke(self, combat) -> None:
+    def evoke(self, combat) -> list:
         enemies = [e for e in combat.alive_enemies if not e.is_dead]
         if not enemies:
-            return
+            return []
         weakest = min(enemies, key=lambda e: e.current_hp)
         weakest.take_damage(self._accumulated_evoke, source=self.owner)
+        return [weakest]
 
 
 class PlasmaOrb(STS2Orb):
@@ -132,13 +139,14 @@ class PlasmaOrb(STS2Orb):
     base_passive = 1
     base_evoke = 2
 
-    def passive(self, combat) -> None:
+    def passive(self, combat, target=None) -> None:
         if self.owner:
             self.owner.gain_energy(self.passive_val)
 
-    def evoke(self, combat) -> None:
+    def evoke(self, combat) -> list:
         if self.owner:
             self.owner.gain_energy(self.evoke_val)
+        return []
 
 
 class GlassOrb(STS2Orb):
@@ -159,7 +167,7 @@ class GlassOrb(STS2Orb):
     def evoke_val(self) -> int:
         return self.passive_val * 2
 
-    def passive(self, combat) -> None:
+    def passive(self, combat, target=None) -> None:
         amount = self.passive_val
         if amount <= 0:
             return
@@ -167,40 +175,84 @@ class GlassOrb(STS2Orb):
         for enemy in [e for e in combat.alive_enemies if not e.is_dead]:
             enemy.take_damage(amount, source=self.owner)
 
-    def evoke(self, combat) -> None:
+    def evoke(self, combat) -> list:
         amount = self.evoke_val
         if amount <= 0:
-            return
-        for enemy in [e for e in combat.alive_enemies if not e.is_dead]:
+            return []
+        hit = [e for e in combat.alive_enemies if not e.is_dead]
+        for enemy in hit:
             enemy.take_damage(amount, source=self.owner)
+        return hit
 
 
 class OrbQueue:
-    """오브 슬롯 큐. 채널 시 슬롯이 가득 차면 선두 오브를 자동 이보크."""
+    """오브 슬롯 큐. 채널 시 슬롯이 가득 차면 선두 오브를 자동 이보크.
+    (디컴파일 OrbCmd: 슬롯 상한 10, RemoveSlots는 뒤에서부터 오브째 제거)"""
+
+    MAX_SLOTS = 10  # OrbCmd.AddSlots 상한
 
     def __init__(self, slot_count: int = 3):
         self.slot_count = slot_count
         self.orbs: List[STS2Orb] = []
 
     def channel(self, orb: STS2Orb, owner, combat) -> None:
-        """오브 채널. 슬롯 초과 시 선두 오브 이보크 후 제거."""
+        """오브 채널. 슬롯 초과 시 선두 오브 이보크 후 제거.
+        슬롯 0인 캐릭터(기본 슬롯 0)는 자동으로 슬롯 1 추가 (OrbCmd.Channel)."""
         orb.owner = owner
+        if self.slot_count == 0:
+            base = getattr(getattr(owner, "character", None), "base_orb_slot_count", 0)
+            if base == 0:
+                self.gain_slots(1)
+            else:
+                return  # Defect가 BulkUp 등으로 슬롯 0이면 채널 불가
         if len(self.orbs) >= self.slot_count:
             self.evoke_next(combat)
         self.orbs.append(orb)
+        if combat is not None:
+            record = getattr(combat, "record_orb_channel", None)  # Voltaic 카운터
+            if record:
+                record(orb)
+
+    def _after_evoke(self, orb: STS2Orb, targets: list, combat) -> None:
+        """이보크 후 소유자 파워에 통지 (Thunder)."""
+        owner = orb.owner
+        if owner is None:
+            return
+        for power in list(getattr(owner, "_powers", {}).values()):
+            hook = getattr(power, "after_orb_evoked", None)
+            if hook:
+                hook(orb, targets, combat)
 
     def evoke_next(self, combat, dequeue: bool = True) -> Optional[STS2Orb]:
         """선두 오브 이보크. dequeue=False면 큐에 유지 (Dualcast용)."""
         if not self.orbs:
             return None
         front = self.orbs[0]
-        front.evoke(combat)
+        targets = front.evoke(combat) or []
         if dequeue:
             self.orbs.pop(0)
+        self._after_evoke(front, targets, combat)
         return front
 
+    def evoke_last(self, combat, dequeue: bool = True) -> Optional[STS2Orb]:
+        """가장 최근 오브 이보크 (OrbCmd.EvokeLast — ConsumingShadow)."""
+        if not self.orbs:
+            return None
+        last = self.orbs[-1]
+        targets = last.evoke(combat) or []
+        if dequeue:
+            self.orbs.pop()
+        self._after_evoke(last, targets, combat)
+        return last
+
     def gain_slots(self, count: int) -> None:
-        self.slot_count += count
+        self.slot_count = min(self.MAX_SLOTS, self.slot_count + count)
+
+    def remove_slots(self, count: int) -> None:
+        """슬롯 제거 (OrbCmd.RemoveSlots) — 뒤에서부터, 들어 있던 오브도 함께 제거."""
+        self.slot_count = max(0, self.slot_count - count)
+        while len(self.orbs) > self.slot_count:
+            self.orbs.pop()
 
     def trigger_turn_end(self, combat) -> None:
         """턴 종료 패시브 (Lightning/Frost/Dark/Glass)."""
