@@ -57,6 +57,12 @@ class CombatState:
         self.energy_spent_this_turn = 0     # HelixDrill
         self.zero_cost_attacks_this_turn = 0  # Feral AfterApplied 집계
         self.lightning_channeled_this_combat = 0  # Voltaic
+        self.ethereal_played_this_combat = 0  # BansheesCry/PullFromBelow/Veilpiercer
+        self.osty_attacks_this_turn = 0       # Rattle/Flatten (이번 턴 Osty 공격 수)
+        self.cards_drawn_this_turn = 0        # DeathMarch (손패 드로우 제외)
+        self.deaths_this_combat = 0           # Melancholy (전투 중 사망 수)
+        self._dead_seen: set = set()          # 사망 집계 중복 방지
+        self.doom_applied_this_turn = False   # DeathsDoor (이번 턴 Doom 부여 여부)
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -79,6 +85,8 @@ class CombatState:
             card = self.draw_pile.pop()
             self.hand.append(card)
             self.cards_drawn_this_combat += 1
+            if not self.in_hand_draw:
+                self.cards_drawn_this_turn += 1  # DeathMarch — 손패 드로우 제외 집계
             # Hellraiser 자동 플레이 / CorrosiveWave 중독 / Speedster 피해 / Iteration
             self.notify_player_powers("on_card_drawn", card, self)
             on_drawn = getattr(card, "on_drawn", None)  # Void — 드로우 시 에너지 -1
@@ -266,6 +274,9 @@ class CombatState:
             self.cards_played_this_turn = 0
             self.energy_spent_this_turn = 0
             self.zero_cost_attacks_this_turn = 0
+            self.osty_attacks_this_turn = 0
+            self.cards_drawn_this_turn = 0
+            self.doom_applied_this_turn = False
             self.player.energy = self.player.max_energy
             # EnergyNextTurn/LightningRod/Spinner (원본 AfterEnergyReset)
             self.notify_player_powers("after_energy_reset")
@@ -338,10 +349,19 @@ class CombatState:
                 if self.player.is_dead:
                     return self._finish(False)
 
+            self._trigger_doom()  # 적 턴 종료 시 Doom 즉사 (원본 BeforeSideTurnEnd)
+            self.reap_deaths()    # Doom 처치 포함 사망 집계
             self.notify_player_powers("on_enemy_turn_end")  # Colossus 감쇠
 
             if not self.alive_enemies:
                 return self._finish(True)
+
+    def _trigger_doom(self) -> None:
+        """Doom 보유 적: 턴 종료 시 HP가 Doom 수치 이하이면 즉사 (원본 DoomKill = 직접 처치)."""
+        for enemy in list(self.alive_enemies):
+            doom = enemy._powers.get("doom")
+            if doom is not None and doom.is_owner_doomed():
+                enemy._current_hp = 0
 
     def _resolve_targets(self, card: "STS2Card",
                          target: Optional["MonsterModel"]) -> List["MonsterModel"]:
@@ -372,6 +392,8 @@ class CombatState:
         self.cards_played_this_turn += 1
         if card.card_type == CardType.ATTACK and paid == 0:
             self.zero_cost_attacks_this_turn += 1  # 원본 CardPlayStartedEntry(EnergyValue==0, Attack)
+        if card.is_ethereal:
+            self.ethereal_played_this_combat += 1  # Necrobinder ethereal 시너지
 
         # 카드는 효과 처리 전에 핸드를 떠난다 (효과 중 핸드 버리기가 자신을 버리지 않도록)
         self.hand.remove(card)
@@ -404,6 +426,10 @@ class CombatState:
         # 부여된 파워(EchoForm/SignalBoost 자신)는 이번 플레이에 미적용
         echo_before = self.player.get_power_amount("echo_form")
         signal_boost_before = self.player.get_power_amount("signal_boost")
+
+        # Lethality — 이번 턴 첫 공격 카드 판정 (원본 첫 attack CardPlayStarted)
+        self.player._first_attack_this_turn = (
+            card.card_type == CardType.ATTACK and self.attacks_played_this_turn == 1)
 
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
@@ -443,13 +469,37 @@ class CombatState:
             if retargets or card.card_type != CardType.ATTACK:
                 card.use(self.player, retargets, self)
 
+        # Transfigure Replay — 카드에 부여된 추가 발동 횟수만큼 재발동
+        for _ in range(getattr(card, "_extra_plays", 0)):
+            retargets = [t for t in self._resolve_targets(card, target) if not t.is_gone]
+            if retargets or card.card_type != CardType.ATTACK:
+                card.use(self.player, retargets, self)
+
         self._settle_card(card)
+        self.player._first_attack_this_turn = False
 
         for relic in self.player.relics:
             relic.on_card_played(card)
         self.notify_player_powers("on_card_played", card, self)
+        self._broadcast_card_played(card, paid)  # RightHandHand — 버림 더미 회수
         self._trigger_strangle()
+        self.reap_deaths()  # Melancholy — 사망 집계
         return True
+
+    def _broadcast_card_played(self, card: "STS2Card", paid: int) -> None:
+        """버림/드로우 더미의 카드에 플레이 이벤트 통지 (RightHandHand)."""
+        for pile in (self.discard_pile, self.draw_pile):
+            for c in list(pile):
+                hook = getattr(c, "on_ally_card_played", None)
+                if hook:
+                    hook(card, paid, self)
+
+    def reap_deaths(self) -> None:
+        """새로 사망한 적을 집계 (Melancholy 코스트 감소용)."""
+        for m in self.monsters:
+            if m.is_dead and id(m) not in self._dead_seen:
+                self._dead_seen.add(id(m))
+                self.deaths_this_combat += 1
 
     def _trigger_strangle(self) -> None:
         """Strangle — 플레이어 카드 플레이마다 교살당한 적이 비차단 피해."""
@@ -500,13 +550,20 @@ class CombatState:
             self.zero_cost_attacks_this_turn += 1  # 원본 CardPlayStartedEntry(EnergyValue==0)
         elif card.card_type == CardType.SKILL:
             self.skills_played_this_turn += 1
+        if card.is_ethereal:
+            self.ethereal_played_this_combat += 1
+        self.player._first_attack_this_turn = (
+            card.card_type == CardType.ATTACK and self.attacks_played_this_turn == 1)
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
         self._settle_card(card, force_exhaust=force_exhaust)
+        self.player._first_attack_this_turn = False
         for relic in self.player.relics:
             relic.on_card_played(card)
         self.notify_player_powers("on_card_played", card, self)
+        self._broadcast_card_played(card, 0)
         self._trigger_strangle()
+        self.reap_deaths()
 
     def _discard_hand(self) -> None:
         """턴 종료 핸드 정리. 에테리얼은 소모, Retain 카드는 유지."""
@@ -541,6 +598,7 @@ class CombatState:
                 card._free_until_played = False
                 card._cost_this_combat = None
                 card._cost_add_this_combat = 0
+                card._extra_plays = 0
                 reset = getattr(card, "reset_combat_state", None)  # Claw 누적 데미지
                 if reset:
                     reset()

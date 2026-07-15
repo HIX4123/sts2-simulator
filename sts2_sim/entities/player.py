@@ -60,9 +60,14 @@ class Player(Creature):
     def summon_osty(self, amount: int) -> None:
         """Osty 소환. 생존 중이면 HP 스택 (디컴파일 OstyCmd.Summon 대응)."""
         if self.osty is None or self.osty.is_dead:
-            self.osty = Osty(amount)
+            self.osty = Osty(amount, owner=self)
         else:
             self.osty.gain_summon_hp(amount)
+
+    def heal_osty(self, amount: int) -> None:
+        """Osty 회복 (Spur 등). Osty가 살아있을 때만."""
+        if self.osty is not None and self.osty.is_alive:
+            self.osty.heal(amount)
 
     def sync_to_character(self) -> None:
         """전투 결과 HP를 캐릭터(런 상태)에 반영."""

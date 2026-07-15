@@ -42,9 +42,22 @@ class Rarity(Enum):
 
 def _deal_attack(source, target, base_damage: int) -> dict:
     """공격 데미지 파이프라인: 공격자 수정(Strength/Weak) → 피격 처리.
-    Tracking(약화 대상 +50%)/Envenom(비차단 피해 시 중독) 훅 포함."""
+    Tracking(약화 대상 +50%)/Envenom(비차단 피해 시 중독) 훅 포함.
+    Necrobinder: Osty 공격 Calcify 보너스, Lethality(첫 공격 배수),
+    ReaperForm/SicEm 사후 훅."""
     calc = getattr(source, "compute_attack_damage", None)
     dmg = calc(base_damage) if calc else base_damage
+    # controller = 실제 시전자 (Osty면 그 주인 플레이어, 아니면 source 자신)
+    is_osty = getattr(source, "owner", None) is not None
+    controller = source.owner if is_osty else source
+    # Calcify — Osty의 파워드 공격에 +amount (원본 CalcifyPower)
+    if is_osty and hasattr(controller, "get_power_amount"):
+        dmg += controller.get_power_amount("calcify")
+    # Lethality — 이번 턴 첫 공격 카드 ×(1 + amount/100) (원본 LethalityPower)
+    if getattr(controller, "_first_attack_this_turn", False):
+        leth = controller.get_power_amount("lethality")
+        if leth > 0:
+            dmg = int(dmg * (1 + leth / 100))
     # Tracking — 약화 상태의 대상에게 주는 공격 데미지 +amount%
     if hasattr(source, "get_power_amount") and hasattr(target, "get_power_amount"):
         tracking = source.get_power_amount("tracking")
@@ -58,7 +71,29 @@ def _deal_attack(source, target, base_damage: int) -> dict:
         if envenom > 0 and not target.is_dead:
             from sts2_sim.models.sts2_power import Poison
             target.apply_power(Poison(envenom), applier=source)
+    _necrobinder_after_attack(controller, source, target, result)
     return result
+
+
+def _necrobinder_after_attack(controller, dealer, target, result) -> None:
+    """플레이어/Osty의 파워드 공격 사후 훅: ReaperForm(Doom 부여), SicEm(Osty 소환)."""
+    if not hasattr(controller, "get_power_amount"):
+        return
+    total = result.get("damage", 0)
+    if total <= 0 or target.is_dead:
+        return
+    # ReaperForm — 준 피해만큼 대상에게 Doom 부여
+    rf = controller.get_power_amount("reaper_form")
+    if rf > 0 and hasattr(target, "apply_power"):
+        from sts2_sim.models.sts2_power import Doom
+        target.apply_power(Doom(total * rf), applier=controller)
+    # SicEm — 당신의 Osty가 이 적을 공격하면 Osty 소환/강화
+    if dealer is getattr(controller, "osty", None):
+        se = target.get_power_amount("sic_em")
+        if se > 0:
+            summon = getattr(controller, "summon_osty", None)
+            if summon:
+                summon(se)
 
 
 class STS2Card:
@@ -94,6 +129,7 @@ class STS2Card:
         self._cost_add_this_combat = 0  # AddThisCombat (Modded 누진 비용)
         self._free_until_played = False  # SetUntilPlayed(0) (RocketPunch)
         self._last_paid = 0             # 직전 플레이에 지불한 에너지 (Feral 판정)
+        self._extra_plays = 0           # Transfigure — 플레이 시 추가 발동 횟수(BaseReplayCount)
 
     def use(self, source, targets: List["Creature"], combat=None) -> None:
         """카드 사용. combat은 전투 컨텍스트 (드로우/오브 등 필요 시)."""
@@ -362,6 +398,7 @@ class Unleash(STS2Card):
     card_type = CardType.ATTACK
     rarity = Rarity.BASIC
     cost = 1
+    is_osty_attack = True  # CardTag.OstyAttack (Squeeze 카운트 대상)
 
     def use(self, source, targets, combat=None) -> None:
         base = 9 if self.upgraded else 6

@@ -69,6 +69,20 @@ class Creature:
             if outbreak > 0 and combat is not None:
                 for enemy in list(combat.alive_enemies):
                     enemy.take_damage(outbreak, source=applier)
+        # Shroud — 시전자가 Doom을 부여할 때마다 블록 획득 (원본 ShroudPower)
+        if (applier is not None and applier is not self
+                and power.power_id == "doom"):
+            combat = getattr(applier, "combat", None)
+            if combat is not None:
+                combat.doom_applied_this_turn = True  # DeathsDoor
+            shroud = applier.get_power_amount("shroud")
+            if shroud > 0:
+                applier._block += shroud  # 원본 Unpowered — 민첩 미적용
+        # SleightOfFlesh — 시전자가 적에게 디버프를 부여할 때마다 그 적에게 피해
+        if (applier is not None and applier is not self and power.is_debuff):
+            sof = applier.get_power_amount("sleight_of_flesh")
+            if sof > 0 and not self.is_dead:
+                self.lose_hp(sof)  # 원본 Unpowered — 무보정 피해
         return True
 
     def has_power(self, power_id: str) -> bool:
@@ -100,6 +114,12 @@ class Creature:
 
     def take_damage(self, amount: int, source: Optional[object] = None) -> Dict[str, Any]:
         """피격 처리: 수신 측 수정(Vulnerable/Colossus/Cruelty) → 블록 → HP → 피격 트리거."""
+        # Osty DieForYou — 살아있는 Osty가 플레이어를 겨냥한 공격을 대신 받는다
+        # (원본 DieForYouPower.ModifyUnblockedDamageTarget — 파워드 공격 한정).
+        osty = getattr(self, "osty", None)
+        if (osty is not None and osty is not self and osty.is_alive
+                and source is not None and source is not self):
+            return osty.take_damage(amount, source)
         pre_incoming = amount
         for p in self._powers.values():
             if getattr(p, "damage_side", None) == "incoming":
@@ -117,7 +137,7 @@ class Creature:
                 amount += int(pre_incoming * cruelty / 100)
 
         if amount <= 0:
-            return {"hp_lost": 0, "killed": False}
+            return {"hp_lost": 0, "damage": 0, "killed": False}
 
         block_absorbed = min(self._block, amount)
         self._block -= block_absorbed
@@ -129,7 +149,8 @@ class Creature:
                 if on_hit:
                     on_hit(source, hp_lost)
 
-        return {"hp_lost": hp_lost, "killed": self.is_dead}
+        # damage = 파워 수정 후 총 피해량(블록 흡수 포함) — BlightStrike/ReaperForm 등이 참조
+        return {"hp_lost": hp_lost, "damage": amount, "killed": self.is_dead}
 
     def gain_block(self, amount: int) -> None:
         """블록 획득 (Dexterity/Frail 수정 적용, on_block_gained 트리거)."""
@@ -182,10 +203,35 @@ class Creature:
 class Osty(Creature):
     """Necrobinder의 소환수 Osty."""
 
-    def __init__(self, hp: int):
+    def __init__(self, hp: int, owner: Optional["Creature"] = None):
         super().__init__("Osty", hp)
+        self.owner = owner  # 소환한 플레이어 (NecroMastery 반사용)
 
     def gain_summon_hp(self, amount: int) -> None:
         """소환 스택: 살아있으면 최대/현재 HP 증가."""
         self._max_hp += amount
         self._current_hp += amount
+
+    def _reflect_necro_mastery(self, hp_lost: int) -> None:
+        """NecroMastery — Osty가 HP를 잃으면 (잃은 HP × amount)를 모든 적에게 관통 피해."""
+        if self.owner is None or hp_lost <= 0:
+            return
+        nm = self.owner.get_power_amount("necro_mastery")
+        if nm <= 0:
+            return
+        combat = getattr(self.owner, "combat", None)
+        if combat is None:
+            return
+        for enemy in list(combat.alive_enemies):
+            enemy.lose_hp(hp_lost * nm)  # 원본 Unblockable|Unpowered
+
+    def lose_hp(self, amount: int, from_damage: bool = False) -> int:
+        actual = super().lose_hp(amount, from_damage)
+        self._reflect_necro_mastery(actual)
+        return actual
+
+    def kill(self) -> None:
+        """즉시 처치 (BoneShards/Sacrifice). HP 감소분만큼 NecroMastery 반사."""
+        lost = self._current_hp
+        self._current_hp = 0
+        self._reflect_necro_mastery(lost)

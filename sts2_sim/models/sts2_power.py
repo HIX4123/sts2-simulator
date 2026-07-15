@@ -97,9 +97,13 @@ class Vulnerable(STS2Power):
         self.duration = amount
 
     def modify_damage(self, amount: int, is_attack: bool = True) -> int:
-        """받는 데미지 1.5배."""
+        """받는 데미지 1.5배 (Debilitate 보유 시 2.0배)."""
         if self.duration > 0:
-            return int(amount * 1.5)
+            mult = 1.5
+            if (self.owner is not None and hasattr(self.owner, "get_power_amount")
+                    and self.owner.get_power_amount("debilitate") > 0):
+                mult = mult + (mult - 1)  # 원본 DebilitatePower: 1.5 → 2.0
+            return int(amount * mult)
         return amount
 
     def tick_duration(self) -> None:
@@ -122,9 +126,13 @@ class Weak(STS2Power):
         self.duration = amount
 
     def modify_damage(self, amount: int, is_attack: bool = True) -> int:
-        """주는 데미지 0.75배."""
+        """주는 데미지 0.75배 (Debilitate 보유 시 0.5배)."""
         if self.duration > 0 and is_attack:
-            return int(amount * 0.75)
+            mult = 0.75
+            if (self.owner is not None and hasattr(self.owner, "get_power_amount")
+                    and self.owner.get_power_amount("debilitate") > 0):
+                mult = mult - (1 - mult)  # 원본 DebilitatePower: 0.75 → 0.5
+            return int(amount * mult)
         return amount
 
     def tick_duration(self) -> None:
@@ -1430,6 +1438,375 @@ class FreePower(STS2Power):
 
 
 # ══════════════════════════════════════════
+# Necrobinder 공유 파워
+# ══════════════════════════════════════════
+
+class Doom(STS2Power):
+    """운명 — 카운터 디버프. 소유자의 턴 종료 시 HP가 amount 이하이면 즉사한다.
+    (원본 DoomPower: IsOwnerDoomed = CurrentHp <= Amount, BeforeSideTurnEnd에서 DoomKill)"""
+    power_id = "doom"
+    name = "Doom"
+    is_debuff = True
+
+    def is_owner_doomed(self) -> bool:
+        return self.owner is not None and self.owner.current_hp <= self.amount
+
+
+# ══════════════════════════════════════════
+# Necrobinder 카드 파워 (Phase 6e)
+# ══════════════════════════════════════════
+
+class Calcify(STS2Power):
+    """석회화 — Osty의 파워드 공격에 +amount 피해 (원본 CalcifyPower.ModifyDamageAdditive).
+    실제 가산은 sts2_card._deal_attack에서 Osty 공격 판정 시 처리."""
+    power_id = "calcify"
+    name = "Calcify"
+    is_debuff = False
+
+
+class CalcifyPower(Calcify):
+    pass
+
+
+class CallOfTheVoid(STS2Power):
+    """공허의 부름 — 매 턴 드로우 전 무작위 비-Basic/Ancient Necrobinder 카드
+    amount장을 Ethereal 부여해 손패에 추가 (원본 CallOfTheVoidPower.BeforeHandDraw)."""
+    power_id = "call_of_the_void"
+    name = "Call of the Void"
+    is_debuff = False
+
+    def before_hand_draw(self, combat) -> None:
+        from sts2_sim.cards.necrobinder import NECROBINDER_ETHEREAL_POOL
+        from sts2_sim.models.sts2_card import create_card
+        for _ in range(self.amount):
+            if len(combat.hand) >= 10:
+                break
+            card = create_card(combat.rng.choice(NECROBINDER_ETHEREAL_POOL))
+            if card:
+                card.is_ethereal = True
+                combat.hand.append(card)
+
+
+class Countdown(STS2Power):
+    """카운트다운 — 매 턴 시작 시 무작위 적 1명에게 Doom amount 부여
+    (원본 CountdownPower.AfterSideTurnStart). 소모되지 않고 매턴 반복."""
+    power_id = "countdown"
+    name = "Countdown"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is None:
+            return
+        enemies = combat.alive_enemies
+        if enemies:
+            combat.rng.choice(enemies).apply_power(Doom(self.amount), applier=self.owner)
+
+
+class DanseMacabre(STS2Power):
+    """죽음의 무도 — 코스트 2 이상 카드를 낼 때마다 amount 블록 (Unpowered).
+    (원본 DanseMacabrePower.BeforeCardPlayed, EnergyCost.GetResolved() >= 2)"""
+    power_id = "danse_macabre"
+    name = "Danse Macabre"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        if getattr(card, "_last_paid", 0) >= 2 and self.owner is not None:
+            self.owner._block += self.amount  # 원본 Unpowered — 민첩 미적용
+
+
+class BorrowedTime(STS2Power):
+    """빌린 시간 — 이번 턴 동안 모든 카드 코스트 +amount (원본 BorrowedTimePower).
+    소유자 턴 종료 시 제거."""
+    power_id = "borrowed_time"
+    name = "Borrowed Time"
+    is_debuff = True
+
+    def modify_card_cost(self, card, cost: int) -> int:
+        return cost + self.amount
+
+    def on_turn_end(self) -> None:
+        self.remove()
+
+
+class Demesne(STS2Power):
+    """영지 — 매 턴 손패 드로우 +amount, 최대 에너지 +amount (지속)
+    (원본 DemesnePower.ModifyHandDraw/ModifyMaxEnergy)."""
+    power_id = "demesne"
+    name = "Demesne"
+    is_debuff = False
+
+    def apply(self, owner, applier=None) -> None:
+        delta = self.amount
+        super().apply(owner, applier)
+        owner.max_energy = getattr(owner, "max_energy", 0) + delta
+
+    def modify_hand_draw(self, count: int) -> int:
+        return count + self.amount
+
+
+class DevourLife(STS2Power):
+    """생명 포식 — Soul 카드를 플레이할 때마다 Osty를 amount만큼 소환/강화
+    (원본 DevourLifePower.AfterCardPlayed)."""
+    power_id = "devour_life"
+    name = "Devour Life"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        if getattr(card, "card_id", None) == "soul":
+            summon = getattr(self.owner, "summon_osty", None)
+            if summon:
+                summon(self.amount)
+
+
+class EnfeeblingTouch(STS2Power):
+    """쇠약의 손길 — 대상 적이 이번 턴 힘 amount 감소, 적 턴 종료 시 복구
+    (원본 EnfeeblingTouchPower : TemporaryStrengthPower)."""
+    power_id = "enfeebling_touch"
+    name = "Enfeebling Touch"
+    is_debuff = True
+
+    def apply(self, owner, applier=None) -> None:
+        first = self.power_id not in owner._powers
+        super().apply(owner, applier)
+        # 최초 적용 시에만 힘 감소 (임시 파워 — 턴 종료에 복구)
+        if first:
+            owner.apply_power(Strength(-self.amount))
+
+    def on_turn_end(self) -> None:
+        if self.owner is not None:
+            self.owner.apply_power(Strength(self.amount))
+        self.remove()
+
+
+class Friendship(STS2Power):
+    """우정 — 최대 에너지 +amount (지속) (원본 FriendshipPower.ModifyMaxEnergy)."""
+    power_id = "friendship"
+    name = "Friendship"
+    is_debuff = False
+
+    def apply(self, owner, applier=None) -> None:
+        delta = self.amount
+        super().apply(owner, applier)
+        owner.max_energy = getattr(owner, "max_energy", 0) + delta
+
+
+class Hang(STS2Power):
+    """교수 — Hang 카드가 이 적을 칠 때 피해 ×amount배 (원본 HangPower).
+    실제 배수는 Hang 카드에서 처리, 여기선 스택만 저장."""
+    power_id = "hang"
+    name = "Hang"
+    is_debuff = True
+
+
+class Haunt(STS2Power):
+    """출몰 — Soul 카드를 플레이할 때마다 무작위 적 1명에게 amount 관통 피해
+    (원본 HauntPower.AfterCardPlayed, Unblockable|Unpowered)."""
+    power_id = "haunt"
+    name = "Haunt"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        if getattr(card, "card_id", None) == "soul":
+            enemies = combat.alive_enemies
+            if enemies:
+                combat.rng.choice(enemies).lose_hp(self.amount)  # 관통·무보정
+
+
+class Lethality(STS2Power):
+    """치명 — 매 턴 첫 공격 카드의 피해 ×(1 + amount/100) (원본 LethalityPower).
+    실제 배수는 sts2_card._deal_attack에서 combat 첫 공격 플래그로 처리."""
+    power_id = "lethality"
+    name = "Lethality"
+    is_debuff = False
+
+
+class NecroMastery(STS2Power):
+    """강령술 숙련 — Osty가 HP를 잃을 때마다 (잃은 HP × amount)를 모든 적에게 관통 피해
+    (원본 NecroMasteryPower.AfterCurrentHpChanged). 반사는 Osty.lose_hp에서 처리."""
+    power_id = "necro_mastery"
+    name = "Necro Mastery"
+    is_debuff = False
+
+
+class Neurosurge(STS2Power):
+    """신경 급증 — 매 턴 시작 시 자신(플레이어)에게 Doom amount 누적
+    (원본 NeurosurgePower.AfterSideTurnStart, 자해 Doom)."""
+    power_id = "neurosurge"
+    name = "Neurosurge"
+    is_debuff = True
+
+    def on_turn_start(self) -> None:
+        if self.owner is not None:
+            self.owner.apply_power(Doom(self.amount), applier=self.owner)
+
+
+class Oblivion(STS2Power):
+    """망각 — 이번 플레이어 턴 동안 카드를 낼 때마다 대상 적에게 Doom amount 부여,
+    턴 종료 시 제거 (원본 OblivionPower). 대상은 적용 시점의 지정 적."""
+    power_id = "oblivion"
+    name = "Oblivion"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0, target=None, source_card=None):
+        super().__init__(amount)
+        self.target = target
+        # 이 파워를 부여한 Oblivion 카드 — 그 카드 자신의 플레이는 Doom 미부여.
+        # (원본: OblivionPower.BeforeCardPlayed가 파워 부여 전에 이미 지나가 미기록)
+        self._source_card = source_card
+
+    def apply(self, owner, applier=None) -> None:
+        tgt = self.target
+        src = self._source_card
+        super().apply(owner, applier)
+        existing = owner._powers.get(self.power_id)
+        if existing is not None:
+            if tgt is not None:
+                existing.target = tgt
+            existing._source_card = src
+
+    def on_card_played(self, card, combat) -> None:
+        if card is self._source_card:
+            self._source_card = None  # 자기 적용 카드는 1회만 무시
+            return
+        if self.target is not None and not self.target.is_dead:
+            self.target.apply_power(Doom(self.amount), applier=self.owner)
+
+    def on_turn_end(self) -> None:
+        self.remove()
+
+
+class Pagestorm(STS2Power):
+    """책장 폭풍 — Ethereal 카드를 뽑을 때마다 amount장 추가 드로우
+    (원본 PagestormPower.AfterCardDrawn)."""
+    power_id = "pagestorm"
+    name = "Pagestorm"
+    is_debuff = False
+
+    def on_card_drawn(self, card, combat) -> None:
+        if getattr(card, "is_ethereal", False):
+            combat.draw_cards(self.amount)
+
+
+class ReaperForm(STS2Power):
+    """사신의 형상 — 플레이어/Osty의 파워드 공격으로 준 피해만큼 대상에게 Doom 부여
+    (원본 ReaperFormPower.AfterDamageGiven). 실제 적용은 _deal_attack에서 처리."""
+    power_id = "reaper_form"
+    name = "Reaper Form"
+    is_debuff = False
+
+
+class SentryMode(STS2Power):
+    """감시 모드 — 매 턴 드로우 전 SweepingGaze amount장을 손패에 추가
+    (원본 SentryModePower.BeforeHandDraw)."""
+    power_id = "sentry_mode"
+    name = "Sentry Mode"
+    is_debuff = False
+
+    def before_hand_draw(self, combat) -> None:
+        from sts2_sim.models.sts2_card import create_card
+        for _ in range(self.amount):
+            if len(combat.hand) >= 10:
+                break
+            card = create_card("sweeping_gaze")
+            if card:
+                combat.hand.append(card)
+
+
+class SicEm(STS2Power):
+    """공격 명령 — 당신의 Osty가 이 적을 공격하면 Osty를 amount만큼 소환/강화
+    (원본 SicEmPower.AfterDamageGiven). 적 턴 종료 시 제거. 발동은 _deal_attack."""
+    power_id = "sic_em"
+    name = "Sic Em"
+    is_debuff = True
+
+    def on_turn_end(self) -> None:
+        self.remove()
+
+
+class SleightOfFlesh(STS2Power):
+    """육체의 술책 — 적에게 디버프를 부여할 때마다 그 적에게 amount 피해
+    (원본 SleightOfFleshPower.AfterPowerAmountChanged). 발동은 Creature.apply_power."""
+    power_id = "sleight_of_flesh"
+    name = "Sleight of Flesh"
+    is_debuff = False
+
+
+class Shroud(STS2Power):
+    """장막 — 자신이 Doom을 부여할 때마다 amount 블록 (Unpowered)
+    (원본 ShroudPower.AfterPowerAmountChanged). 발동은 Creature.apply_power."""
+    power_id = "shroud"
+    name = "Shroud"
+    is_debuff = False
+
+
+class SpiritOfAsh(STS2Power):
+    """재의 정령 — Ethereal 카드를 낼 때마다 amount 블록 (Unpowered)
+    (원본 SpiritOfAshPower.BeforeCardPlayed)."""
+    power_id = "spirit_of_ash"
+    name = "Spirit of Ash"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        if getattr(card, "is_ethereal", False) and self.owner is not None:
+            self.owner._block += self.amount  # 원본 Unpowered
+
+
+class Veilpiercer(STS2Power):
+    """장막 관통 — 스택 수만큼 Ethereal 카드를 0코스트로 낼 수 있음
+    (원본 VeilpiercerPower). Ethereal 카드 코스트를 0으로, 낼 때마다 1 차감."""
+    power_id = "veilpiercer"
+    name = "Veilpiercer"
+    is_debuff = False
+
+    def modify_card_cost(self, card, cost: int) -> int:
+        if self.amount > 0 and getattr(card, "is_ethereal", False):
+            return 0
+        return cost
+
+    def on_card_played(self, card, combat) -> None:
+        if self.amount > 0 and getattr(card, "is_ethereal", False):
+            self.amount -= 1
+            if self.amount <= 0:
+                self.remove()
+
+
+class SummonNextTurn(STS2Power):
+    """다음 턴 소환 — 다음 턴 시작 시 Osty를 amount만큼 소환/강화 후 제거
+    (원본 SummonNextTurnPower.AfterPlayerTurnStart)."""
+    power_id = "summon_next_turn"
+    name = "Summon Next Turn"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        summon = getattr(self.owner, "summon_osty", None)
+        if summon:
+            summon(self.amount)
+        self.remove()
+
+
+class Debilitate(STS2Power):
+    """쇠약 — 이 적의 취약 배수 1.5→2.0, 약화 배수 0.75→0.5 강화 (원본 DebilitatePower).
+    적 턴 종료 시 1 감소. 실제 배수 강화는 Vulnerable/Weak.modify_damage에서 처리."""
+    power_id = "debilitate"
+    name = "Debilitate"
+    is_debuff = True
+
+    def tick_duration(self) -> None:
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class ForbiddenGrimoire(STS2Power):
+    """금단의 마도서 — 전투 종료 시 카드 제거 보상 +amount (원본 ForbiddenGrimoirePower).
+    보상 시스템 미모델링 — 전투 내 효과 없음(마커)."""
+    power_id = "forbidden_grimoire"
+    name = "Forbidden Grimoire"
+    is_debuff = False
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -1531,6 +1908,34 @@ POWER_REGISTRY = {
     "tangled": TangledPower,
     "shackled": ShackledPower,
     "curl_up": CurlUpPower,
+    "doom": Doom,
+    # Necrobinder (Phase 6e)
+    "calcify": Calcify,
+    "call_of_the_void": CallOfTheVoid,
+    "countdown": Countdown,
+    "danse_macabre": DanseMacabre,
+    "borrowed_time": BorrowedTime,
+    "demesne": Demesne,
+    "devour_life": DevourLife,
+    "enfeebling_touch": EnfeeblingTouch,
+    "friendship": Friendship,
+    "hang": Hang,
+    "haunt": Haunt,
+    "lethality": Lethality,
+    "necro_mastery": NecroMastery,
+    "neurosurge": Neurosurge,
+    "oblivion": Oblivion,
+    "pagestorm": Pagestorm,
+    "reaper_form": ReaperForm,
+    "sentry_mode": SentryMode,
+    "sic_em": SicEm,
+    "sleight_of_flesh": SleightOfFlesh,
+    "shroud": Shroud,
+    "spirit_of_ash": SpiritOfAsh,
+    "veilpiercer": Veilpiercer,
+    "summon_next_turn": SummonNextTurn,
+    "debilitate": Debilitate,
+    "forbidden_grimoire": ForbiddenGrimoire,
 }
 
 

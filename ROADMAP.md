@@ -90,9 +90,36 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
   Feral IsDupe 예외는 dupe 생성원(Duplication Potion 등) 미구현이라 관측 불가로 기록.
   나머지 전 항목 일치. 오브 이보크 6종(MultiCast/Quadcast/Shatter/Voltaic/Barrage/Tempest)은 수동 재대조.
 
-## 📋 Phase 6e+ — 남은 확대 (계획)
+## ✅ Phase 6e — Necrobinder 카드 풀 (완료)
 
-- [ ] 나머지 캐릭터 카드 풀 (Necrobinder/Regent/Colorless — 전체 593종 중 ~270종 이식)
+- [x] **Necrobinder 카드 풀 완전 이식**: `NecrobinderCardPool` 91종 중 싱글플레이 82종
+  (멀티 전용 5종 제외: Cacophony/GlimpseBeyond/LegionOfBone/Soulbound/Underworld;
+  스타터 4종 Strike/Defend/Bodyguard/Unleash는 기존 구현) + Soul/SweepingGaze 토큰
+- [x] 카드 파워 25종 신규 배선 (Calcify/CallOfTheVoid/Countdown/DanseMacabre/
+  BorrowedTime/Demesne/DevourLife/EnfeeblingTouch/Friendship/Hang/Haunt/Lethality/
+  NecroMastery/Neurosurge/Oblivion/Pagestorm/ReaperForm/SentryMode/SicEm/
+  SleightOfFlesh/Shroud/SpiritOfAsh/Veilpiercer/SummonNextTurn/Debilitate 등)
+- [x] **Osty 소환수 엔진**: DieForYou(살아있는 Osty가 플레이어 겨냥 파워드 공격 대신 받음),
+  Osty 공격 카드 12종(Poke/Snap/Flatten/Fetch/RightHandHand/Rattle/SicEm/BoneShards/
+  HighFive/Squeeze/Protector + 스타터 Unleash — Osty가 딜러, Calcify 보너스),
+  NecroMastery 반사(Osty HP 손실 → 모든 적 관통), Sacrifice/BoneShards Osty 제물
+- [x] **Doom 엔진**: 적 턴 종료 시 HP ≤ Doom 즉사(DoomKill), EndOfDays 즉시 처치,
+  ReaperForm(준 피해만큼 Doom), BlightStrike(입힌 피해=Doom), Countdown/Neurosurge
+  매턴 자동 Doom, NoEscape 누진 Doom, Shroud(Doom 부여 시 블록)
+- [x] **Ethereal 시너지 엔진**: 전투 내 Ethereal 플레이 집계(BansheesCry 코스트 감소/
+  PullFromBelow 타격 수), SpiritOfAsh(블록)/Pagestorm(추가 드로우)/Veilpiercer(0코스트)
+- [x] 전투 엔진 확장: 사망 집계(Melancholy 코스트 감소), 카드 플레이 브로드캐스트
+  (RightHandHand 회수), Lethality 첫 공격 배수, Transfigure Replay(_extra_plays),
+  Debilitate 취약/약화 배수 강화, Doom 부여 집계(DeathsDoor), Osty 공격 카운터(Rattle/Flatten)
+- [x] Soul 토큰 생성 파이프라인(뽑을 더미 무작위/버림/손패), DevourLife/Haunt(Soul 플레이 트리거)
+- [x] 멀티에이전트 적대 검증 (8에이전트로 82카드+25파워를 디컴파일 원본과 배치 대조).
+  발견·수정: Oblivion 자기 트리거 Doom 초과 부여, SicEm 자기 공격 소환 오발동,
+  PullFromBelow 잘못된 Ethereal화·자기 집계, Eidolon 오소모, Severance Soul 소실 —
+  전부 원본 대조 후 수정 및 회귀 테스트 추가
+
+## 📋 Phase 6f+ — 남은 확대 (계획)
+
+- [ ] 나머지 캐릭터 카드 풀 (Regent/Colorless — 전체 593종 중 ~188종 이식)
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
@@ -120,6 +147,7 @@ python3 test_sts2_phase6.py       # 신규 몬스터/인카운터
 python3 test_sts2_phase6b.py      # Ironclad 카드 풀 85종
 python3 test_sts2_phase6c.py      # Silent 카드 풀 86종
 python3 test_sts2_phase6d.py      # Defect 카드 풀 86종 + 오브 엔진 확장
+python3 test_sts2_phase6e.py      # Necrobinder 카드 풀 82종 + Osty/Doom/Ethereal 엔진
 ```
 
 **통계 실행:**

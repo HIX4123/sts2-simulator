@@ -27,14 +27,15 @@ sts2_sim/
 │  ├─ sts2_monster.py    # MonsterModel + 상태 머신 + 기본 17종
 │  └─ monsters_extra.py  # Phase 6a 추가 17종
 ├─ models/
-│  ├─ sts2_power.py      # 파워 95종
+│  ├─ sts2_power.py      # 파워 120종
 │  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종 + 상태이상 5종
 │  ├─ sts2_relic.py      # 렐릭 22종
 │  └─ sts2_orb.py        # 오브 5종 + OrbQueue (상한 10/EvokeLast/이보크 훅)
 ├─ cards/
 │  ├─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
 │  ├─ silent.py          # Phase 6c: Silent 풀 80종 (C19/U34/R25/Ancient2)
-│  └─ defect.py          # Phase 6d: Defect 풀 83종 (C20/U35/R25/Ancient2/Token1)
+│  ├─ defect.py          # Phase 6d: Defect 풀 83종 (C20/U35/R25/Ancient2/Token1)
+│  └─ necrobinder.py     # Phase 6e: Necrobinder 풀 84종 (C20/U35/R25/Ancient2/Token2)
 └─ core/
    ├─ combat.py          # 턴 루프 + SimplePolicy
    ├─ policy.py          # GreedyPolicy (인텐트 인지)
@@ -88,6 +89,9 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
 **Phase 6d Defect 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 5.5/7,
 사망의 80%가 동일한 최종 엘리트(사망 층 분포 {F3:3, F4:3, F6:24}) → 병목 동일.
 그리디 정책이 오브 셋업 가치를 저평가하는 한계 포함 (채널 카드 estimate 미반영).
+**Phase 6e Necrobinder 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 6.0/7
+(HP 66 시작), 평균 골드 158.7 → 최종 엘리트 병목 동일. 그리디가 Osty 셋업·Doom
+누적의 지연 가치를 저평가하는 한계 포함 (즉발 딜/블록만 estimate 반영).
 
 ## 🃏 Ironclad 카드 풀 (Phase 6b)
 
@@ -162,6 +166,46 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
   GeneticAlgorithm 덱 레벨 영구 블록 성장(런 전체 유지)
 - **단순화 표기:** 카드 선택 UI 효과(Hologram/Scavenge)는 무작위 선택 `[선택→무작위]`
 
+## 💀 Necrobinder 카드 풀 (Phase 6e)
+
+디컴파일 `NecrobinderCardPool` 91종 중 싱글플레이 82종 전량 이식
+(멀티 전용 Cacophony/GlimpseBeyond/LegionOfBone/Soulbound/Underworld 제외;
+스타터 Strike/Defend/Bodyguard/Unleash 기존 구현) + Soul/SweepingGaze 토큰.
+
+- **Osty 소환수 엔진:** DieForYou(살아있는 Osty가 플레이어 겨냥 **파워드 공격**을
+  대신 받음 — `Creature.take_damage` 리다이렉트), Summon(생존 시 최대HP+n/사망 시
+  부활/부재 시 생성), Osty 공격 카드(CardTag.OstyAttack — Osty가 딜러, 부재 시 무효):
+  Poke/Snap/Flatten/Fetch/RightHandHand/Rattle/SicEm/BoneShards/HighFive/Squeeze/
+  Protector + 스타터 Unleash. **Calcify**는 Osty 파워드 공격에 +피해(`_deal_attack`),
+  **NecroMastery**는 Osty HP 손실을 모든 적에게 관통 반사(`Osty.lose_hp`/`kill`)
+- **Doom 엔진:** 적 턴 종료 시 HP ≤ Doom이면 즉사(DoomKill, `_trigger_doom`),
+  EndOfDays 즉시 처치, **ReaperForm**(플레이어/Osty가 준 피해=Doom), BlightStrike
+  (입힌 피해=Doom), Countdown/Neurosurge 매턴 자동 Doom, NoEscape 누진, Deathbringer/
+  Scourge/NegativePulse 직접 부여, **Shroud**(Doom 부여 시 블록)/**DeathsDoor**
+  (Doom 부여 턴 3배 블록)/**SleightOfFlesh**(디버프 부여 시 피해) — `apply_power` 훅
+- **Ethereal 시너지 엔진:** `ethereal_played_this_combat` 집계 →
+  **BansheesCry**(코스트 -2/Ethereal), **PullFromBelow**(타격 수), **SpiritOfAsh**
+  (플레이 시 블록), **Pagestorm**(Ethereal 드로우 시 추가 드로우), **Veilpiercer**
+  (Ethereal 0코스트), **CallOfTheVoid**(매턴 무작위 카드 Ethereal 부여)
+- **신규 파워 25종:** Calcify, CallOfTheVoid, Countdown, DanseMacabre, BorrowedTime,
+  Demesne, DevourLife, EnfeeblingTouch, Friendship, Hang, Haunt, Lethality,
+  NecroMastery, Neurosurge, Oblivion, Pagestorm, ReaperForm, SentryMode, SicEm,
+  SleightOfFlesh, Shroud, SpiritOfAsh, Veilpiercer, SummonNextTurn, Debilitate,
+  ForbiddenGrimoire, Doom (총 120종)
+- **전투 엔진 확장:** 사망 집계 `deaths_this_combat`(**Melancholy** 코스트 감소),
+  카드 플레이 브로드캐스트(**RightHandHand** 버림 더미 회수), **Lethality** 첫 공격
+  ×(1+amount/100), **Transfigure** Replay(`_extra_plays`), **Debilitate** 취약
+  1.5→2.0/약화 0.75→0.5, `doom_applied_this_turn`, Osty 공격 카운터(**Rattle**/**Flatten**),
+  `cards_drawn_this_turn`(**DeathMarch**)
+- **Soul 토큰 파이프라인:** 뽑을 더미 무작위 위치/버림/손패 생성(GraveWarden/Reave/
+  Severance/CaptureSpirit/Dirge/Seance 변형), **DevourLife**/**Haunt**(Soul 플레이 시 트리거)
+- **단순화 표기:** 카드 선택 UI(Snap/SculptingStrike/Dredge/Cleanse 등)는 `[선택→무작위]`,
+  ForbiddenGrimoire 전투 종료 보상·Eternal 키워드는 미모델링(마커)
+- **적대 검증(8에이전트 배치 대조, 82카드+25파워):** 발견·수정 5건 —
+  Oblivion 자기 트리거 Doom 초과, SicEm 자기 공격 소환 오발동(공격→파워 순서 반전),
+  PullFromBelow 잘못된 Ethereal화·자기 히트 집계, Eidolon 오소모(원본 비-Exhaust),
+  Severance 세 번째 Soul 손실 → 전부 원본 대조 후 수정 + 회귀 테스트 추가
+
 ## 🔬 생성 방법론 (Phase 6a)
 
 몬스터 17종은 멀티에이전트 파이프라인으로 이식:
@@ -172,6 +216,6 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6e+ 참조 — 나머지 캐릭터 카드 풀(Necrobinder/Regent/Colorless),
+ROADMAP.md의 Phase 6f+ 참조 — 나머지 캐릭터 카드 풀(Regent/Colorless),
 몬스터 잔여 ~87종, 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage),
 Ascension, 실제 맵 그래프.
