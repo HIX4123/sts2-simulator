@@ -55,7 +55,12 @@ class Player(Creature):
         self.energy += amount
 
     def gain_stars(self, amount: int) -> None:
-        self.stars += amount
+        """별 획득 (원본 PlayerCmd.GainStars — AfterStarsGained 훅 통지)."""
+        self.stars = max(0, self.stars + amount)
+        combat = getattr(self, "combat", None)
+        if combat is not None and amount > 0:
+            combat.stars_gained_this_turn += amount  # Radiate 히트 수 집계
+            combat.notify_player_powers("after_stars_gained", amount)  # BlackHole
 
     def summon_osty(self, amount: int) -> None:
         """Osty 소환. 생존 중이면 HP 스택 (디컴파일 OstyCmd.Summon 대응)."""

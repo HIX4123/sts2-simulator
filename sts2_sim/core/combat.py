@@ -63,6 +63,11 @@ class CombatState:
         self.deaths_this_combat = 0           # Melancholy (전투 중 사망 수)
         self._dead_seen: set = set()          # 사망 집계 중복 방지
         self.doom_applied_this_turn = False   # DeathsDoor (이번 턴 Doom 부여 여부)
+        self.stars_gained_this_turn = 0       # Radiate (이번 턴 별 획득 합계)
+        self.cards_generated_this_combat = 0  # Supermassive (전투 중 생성 카드 수)
+        self.last_star_paid = 0               # BlackHole (직전 플레이의 별 소모량)
+        self.end_turn_requested = False       # VoidForm — 플레이 시 턴 강제 종료
+        self._auto_playing = False            # VoidForm — 자동 플레이 제외 판정
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -191,6 +196,7 @@ class CombatState:
                 self.discard_pile.append(card)
             made.append(card)
             if creator_is_player:
+                self.cards_generated_this_combat += 1  # Supermassive 집계
                 self.notify_player_powers("on_card_generated", card, self)
                 for pile in (self.hand, self.draw_pile, self.discard_pile):
                     for c in pile:
@@ -229,6 +235,17 @@ class CombatState:
                 cost = modify(card, cost)
         return max(0, cost)
 
+    def get_card_star_cost(self, card: "STS2Card") -> int:
+        """실효 별 비용: 파워(VoidForm)의 별 비용 수정 반영. 별 X코스트는 0(최소)."""
+        if getattr(card, "star_x_cost", False):
+            return 0
+        cost = card.star_cost
+        for power in self.player._powers.values():
+            modify = getattr(power, "modify_card_star_cost", None)
+            if modify:
+                cost = modify(card, cost)
+        return max(0, cost)
+
     def is_card_playable(self, card: "STS2Card") -> bool:
         """비용/자원 + Shackled(전체)/Tangled(공격) 차단 검사."""
         if not card.playable:
@@ -236,7 +253,8 @@ class CombatState:
         dynamic = getattr(card, "dynamic_playable", None)  # GrandFinale
         if dynamic and not dynamic(self):
             return False
-        if self.get_card_cost(card) > self.player.energy or card.star_cost > self.player.stars:
+        if (self.get_card_cost(card) > self.player.energy
+                or self.get_card_star_cost(card) > self.player.stars):
             return False
         if self.player.get_power_amount("shackled") > 0:
             return False
@@ -277,6 +295,10 @@ class CombatState:
             self.osty_attacks_this_turn = 0
             self.cards_drawn_this_turn = 0
             self.doom_applied_this_turn = False
+            self.stars_gained_this_turn = 0
+            self.end_turn_requested = False
+            for monster in self.monsters:
+                monster._hits_taken_this_turn = 0  # BeatIntoShape 턴 집계
             self.player.energy = self.player.max_energy
             # EnergyNextTurn/LightningRod/Spinner (원본 AfterEnergyReset)
             self.notify_player_powers("after_energy_reset")
@@ -308,15 +330,31 @@ class CombatState:
             self.in_hand_draw = False
             self.notify_player_powers("after_hand_draw", self)  # ToolsOfTheTrade 버리기
 
+            # 자동 선플레이 페이즈 (원본 AutoPrePlayPhase) — Bombardment 소모 더미 자동 플레이
+            for card in list(self.exhaust_pile):
+                hook = getattr(card, "on_pre_play_phase", None)
+                if hook and card in self.exhaust_pile:
+                    hook(self)
+            if not self.alive_enemies:
+                return self._finish(True)
+
             while True:
                 choice = policy.choose(self)
                 if choice is None:
                     break
                 card, target = choice
                 self.play_card(card, target)
-                if not self.alive_enemies:
+                if not self.alive_enemies or self.end_turn_requested:
                     break
 
+            if not self.alive_enemies:
+                return self._finish(True)
+
+            # 자동 후플레이 페이즈 (원본 AutoPostPlayPhase) — IAmInvincible 자동 플레이
+            if self.draw_pile:
+                hook = getattr(self.draw_pile[-1], "on_post_play_phase", None)
+                if hook:
+                    hook(self)
             if not self.alive_enemies:
                 return self._finish(True)
 
@@ -384,7 +422,18 @@ class CombatState:
         else:
             paid = self.get_card_cost(card)
             self.player.energy -= paid
-        self.player.stars -= card.star_cost
+        if getattr(card, "star_x_cost", False):
+            star_paid = self.player.stars  # Stardust — 별 전부 소비
+            card.star_x_value = star_paid
+        else:
+            star_paid = self.get_card_star_cost(card)
+        self.player.stars -= star_paid
+        self.last_star_paid = star_paid     # BlackHole — 플레이 종료 후 발동 판정
+        if star_paid > 0:
+            # ChildOfTheStars (원본 AfterStarsSpent — 효과 처리 전 지불 시점)
+            self.notify_player_powers("after_stars_spent", star_paid)
+        if paid > 0:
+            self.notify_player_powers("after_energy_spent", card, paid)  # Orbit
         card._last_paid = paid              # Feral 판정
         card._free_until_played = False     # RocketPunch — 플레이로 소모
         self.energy_spent_this_turn += paid
@@ -430,6 +479,9 @@ class CombatState:
         # Lethality — 이번 턴 첫 공격 카드 판정 (원본 첫 attack CardPlayStarted)
         self.player._first_attack_this_turn = (
             card.card_type == CardType.ATTACK and self.attacks_played_this_turn == 1)
+
+        # SealedThrone — 효과 처리 전 발동 (원본 BeforeCardPlayed)
+        self.notify_player_powers("before_card_played", card, self)
 
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
@@ -528,6 +580,13 @@ class CombatState:
                 or (card.card_type == CardType.SKILL
                     and self.player.has_power("corruption"))):
             self._exhaust_card(card)
+            return
+        # Regent — 버림 대신 다른 위치로 이동하는 카드 (원본 GetResultPileTypeAndPosition)
+        settle_to = getattr(card, "settle_to", None)
+        if settle_to == "draw_top":       # ShiningStrike — 뽑을 더미 맨 위
+            self.draw_pile.append(card)
+        elif settle_to == "hand" and len(self.hand) < 10:  # ParticleWall — 손패로
+            self.hand.append(card)
         else:
             self.discard_pile.append(card)
 
@@ -554,6 +613,10 @@ class CombatState:
             self.ethereal_played_this_combat += 1
         self.player._first_attack_this_turn = (
             card.card_type == CardType.ATTACK and self.attacks_played_this_turn == 1)
+        self.last_star_paid = 0  # 자동 플레이는 별 미지불 (BlackHole 미발동)
+        prev_auto = self._auto_playing
+        self._auto_playing = True  # VoidForm — 자동 플레이는 무료 카드 수 미차감
+        self.notify_player_powers("before_card_played", card, self)  # SealedThrone
         targets = self._resolve_targets(card, target)
         card.use(self.player, targets, self)
         self._settle_card(card, force_exhaust=force_exhaust)
@@ -561,6 +624,7 @@ class CombatState:
         for relic in self.player.relics:
             relic.on_card_played(card)
         self.notify_player_powers("on_card_played", card, self)
+        self._auto_playing = prev_auto
         self._broadcast_card_played(card, 0)
         self._trigger_strangle()
         self.reap_deaths()
@@ -574,6 +638,22 @@ class CombatState:
                 hook(self.player, self)
         cards = list(self.hand)
         self.hand = []
+        # RetainHand (Convergence) — 손패 전체 유지. Ethereal 소모는 그대로
+        # (원본 ShouldFlush=false — Ethereal 처리는 flush와 별개의 DoTurnEnd)
+        retain_hand = self.player._powers.get("retain_hand")
+        if retain_hand is not None:
+            for card in cards:
+                if card.is_ethereal:
+                    self._exhaust_card(card)
+                else:
+                    card._retain_this_turn = False
+                    card._free_this_turn = False
+                    card._sly_this_turn = False
+                    self.hand.append(card)
+            retain_hand.amount -= 1
+            if retain_hand.amount <= 0:
+                retain_hand.remove()
+            return
         for card in cards:
             if card.is_ethereal:
                 self._exhaust_card(card)
@@ -592,7 +672,9 @@ class CombatState:
         for pile in (self.hand, self.draw_pile, self.discard_pile, self.exhaust_pile):
             for card in pile:
                 card.is_sly = type(card).is_sly
-                card.retains = type(card).retains
+                # 업그레이드로 부여된 Retain(Monologue/RoyalGamble)은 영구 유지
+                card.retains = (type(card).retains
+                                or getattr(card, "_retains_permanent", False))
                 card._free_this_turn = card._sly_this_turn = False
                 card._retain_this_turn = False
                 card._free_until_played = False
@@ -602,6 +684,7 @@ class CombatState:
                 reset = getattr(card, "reset_combat_state", None)  # Claw 누적 데미지
                 if reset:
                     reset()
+        self.notify_player_powers("on_combat_end", victory)  # Royalties 골드 보상
         for relic in self.player.relics:
             relic.on_combat_end(victory)
         self.player.sync_to_character()

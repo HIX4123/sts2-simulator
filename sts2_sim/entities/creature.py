@@ -107,7 +107,7 @@ class Creature:
     def compute_attack_damage(self, base: int) -> int:
         """공격자 측 데미지 수정 (Strength → Weak 순)."""
         amount = base
-        for p in self._powers.values():
+        for p in list(self._powers.values()):
             if getattr(p, "damage_side", None) == "outgoing":
                 amount = p.modify_damage(amount, is_attack=True)
         return max(0, amount)
@@ -121,7 +121,7 @@ class Creature:
                 and source is not None and source is not self):
             return osty.take_damage(amount, source)
         pre_incoming = amount
-        for p in self._powers.values():
+        for p in list(self._powers.values()):
             if getattr(p, "damage_side", None) == "incoming":
                 modify_src = getattr(p, "modify_incoming", None)
                 if modify_src:
@@ -143,6 +143,13 @@ class Creature:
         self._block -= block_absorbed
         hp_lost = self.lose_hp(amount - block_absorbed, from_damage=True)
 
+        # Reflect — 블록으로 막은 파워드 공격 피해를 공격자에게 반사
+        if block_absorbed > 0 and source is not None:
+            for p in list(self._powers.values()):
+                on_blocked = getattr(p, "on_damage_blocked", None)
+                if on_blocked:
+                    on_blocked(source, block_absorbed)
+
         if hp_lost > 0:
             for p in list(self._powers.values()):
                 on_hit = getattr(p, "on_take_damage", None)
@@ -152,11 +159,16 @@ class Creature:
         # damage = 파워 수정 후 총 피해량(블록 흡수 포함) — BlightStrike/ReaperForm 등이 참조
         return {"hp_lost": hp_lost, "damage": amount, "killed": self.is_dead}
 
+    def compute_modified_block(self, amount: int) -> int:
+        """파워(Dexterity/Frail 등)의 modify_block만 적용한 값 반환 (실제 블록은 미변경).
+        Glitterstream처럼 시전 시점에 수정된 값을 나중에 지급해야 하는 카드용."""
+        for p in list(self._powers.values()):
+            amount = p.modify_block(amount)
+        return max(0, amount)
+
     def gain_block(self, amount: int) -> None:
         """블록 획득 (Dexterity/Frail 수정 적용, on_block_gained 트리거)."""
-        for p in self._powers.values():
-            amount = p.modify_block(amount)
-        gained = max(0, amount)
+        gained = self.compute_modified_block(amount)
         self._block += gained
         if gained > 0:
             for p in list(self._powers.values()):

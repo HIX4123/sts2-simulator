@@ -23,6 +23,7 @@ from sts2_sim.cards.ironclad import IRONCLAD_POOL_BY_RARITY
 from sts2_sim.cards.silent import SILENT_POOL_BY_RARITY
 from sts2_sim.cards.defect import DEFECT_POOL_BY_RARITY
 from sts2_sim.cards.necrobinder import NECROBINDER_POOL_BY_RARITY
+from sts2_sim.cards.regent import REGENT_POOL_BY_RARITY
 
 
 # 층 시퀀스: N1=쉬운 전투, N2=중간 전투, R=휴식, E=엘리트
@@ -48,6 +49,7 @@ RARITY_POOLS = {
     "Silent": SILENT_POOL_BY_RARITY,
     "Defect": DEFECT_POOL_BY_RARITY,
     "Necrobinder": NECROBINDER_POOL_BY_RARITY,
+    "Regent": REGENT_POOL_BY_RARITY,
 }
 
 

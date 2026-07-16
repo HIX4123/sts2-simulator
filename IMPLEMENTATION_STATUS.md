@@ -10,11 +10,11 @@
 | 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
 | 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 264종 | **Ironclad 85 + Silent 86 + Defect 86종 완전 이식** + 스타터/상태이상/토큰 (STS2 전체 593종) |
-| 파워 | 95종 | 카드 파워 74종 포함 — 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 카드 | 435종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82종 완전 이식** + 스타터/상태이상/토큰 (STS2 전체 593종 중) |
+| 파워 | 145종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 10개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 12개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -35,7 +35,8 @@ sts2_sim/
 │  ├─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
 │  ├─ silent.py          # Phase 6c: Silent 풀 80종 (C19/U34/R25/Ancient2)
 │  ├─ defect.py          # Phase 6d: Defect 풀 83종 (C20/U35/R25/Ancient2/Token1)
-│  └─ necrobinder.py     # Phase 6e: Necrobinder 풀 84종 (C20/U35/R25/Ancient2/Token2)
+│  ├─ necrobinder.py     # Phase 6e: Necrobinder 풀 84종 (C20/U35/R25/Ancient2/Token2)
+│  └─ regent.py          # Phase 6f: Regent 풀 87종 (C20/U35/R25/Ancient2/Token5)
 └─ core/
    ├─ combat.py          # 턴 루프 + SimplePolicy
    ├─ policy.py          # GreedyPolicy (인텐트 인지)
@@ -92,6 +93,10 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
 **Phase 6e Necrobinder 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 6.0/7
 (HP 66 시작), 평균 골드 158.7 → 최종 엘리트 병목 동일. 그리디가 Osty 셋업·Doom
 누적의 지연 가치를 저평가하는 한계 포함 (즉발 딜/블록만 estimate 반영).
+**Phase 6f Regent 런 통계 (그리디, 30시드):** 완주 0% — 평균 도달 층 5.6/7
+(HP 75 시작), 평균 골드 155.3 → 최종 엘리트 병목 동일. 그리디가 Stars 축적/Forge
+누적의 지연 가치를 저평가하는 한계 포함 (즉발 딜/블록만 estimate 반영, 별 자원
+소모 스킬은 즉시 가치가 낮아 후순위로 밀림).
 
 ## 🃏 Ironclad 카드 풀 (Phase 6b)
 
@@ -206,6 +211,56 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
   PullFromBelow 잘못된 Ethereal화·자기 히트 집계, Eidolon 오소모(원본 비-Exhaust),
   Severance 세 번째 Soul 손실 → 전부 원본 대조 후 수정 + 회귀 테스트 추가
 
+## ⭐ Regent 카드 풀 (Phase 6f)
+
+디컴파일 `RegentCardPool` 90종 중 싱글플레이 82종 전량 이식
+(멀티 전용 Constellation/HammerTime/Largesse/Plot 제외;
+스타터 Strike/Defend/FallingStar/Venerate 기존 구현) +
+SovereignBlade/MinionStrike/MinionDiveBomb/MinionSacrifice/Debris 토큰.
+
+- **Stars 자원 엔진:** 전투/턴 간 지속(플러시 없음), DivineRight(전투 시작 +3),
+  별 X코스트(**Stardust** — 전량 소비 후 `star_x_value`), 카드 비용 파워 수정 훅
+  `get_card_star_cost`(**VoidForm**)
+- **Forge/SovereignBlade 엔진:** `_forge(n)` — 미소모 SovereignBlade가 없으면
+  손패에 생성(`combat.generate_card` 경유, 훅 정상 발동), 소모 더미 포함 전체
+  블레이드 데미지 +n 누적. **SovereignBlade**(2코스트/업글 1, Retain, 토큰,
+  10+Forge 데미지): **Parry**(파워 수치만큼 블록), **SeekingEdge**(전체 공격화),
+  **Conqueror**(대상 피해 2배 — `_playing_sovereign_blade` 플래그로 판정),
+  **SwordSage**(Replay +n, 신규 생성 블레이드에도 소급 적용)
+- **신규 파워 23종:** StarNextTurn, GenesisP, ParryP, SeekingEdgeP, BlackHoleP,
+  ChildOfTheStarsP, ConquerorP, MonarchsGazeP, MonologueP, PaleBlueDotP, OrbitP,
+  ReflectP, RetainHandP, ForegoneConclusionP, SpectrumShiftP, TyrannyP,
+  SealedThroneP, ArsenalP, PillarOfCreationP, RoyaltiesP, SwordSageP, VoidFormP,
+  FurnaceP
+- **전투 엔진 확장:** `stars_gained_this_turn`(**Radiate**)/`cards_generated_this_combat`
+  (**Supermassive**)/`last_star_paid`(**BlackHole**) 카운터, `_hits_taken_this_turn`
+  (대상별, **BeatIntoShape**), `end_turn_requested`(**VoidForm** 플레이 시 즉시 턴종료),
+  자동 선/후플레이 훅 `on_pre_play_phase`(**Bombardment** 소모 더미 자동 재생)/
+  `on_post_play_phase`(**IAmInvincible** 뽑을 더미 맨 위 자동 재생),
+  `_settle_card`의 `settle_to`(**ParticleWall** 손패/**ShiningStrike** 뽑을 더미 맨 위),
+  `Creature.compute_modified_block`(파워 수정만 계산, 실제 블록 미변경 —
+  **Glitterstream** 이월 블록 사전 계산용)
+- **Monologue:** 카드 플레이마다 힘 누적(자기 플레이 1회 미발동), 턴 종료 시
+  부여한 힘 전부 회수, 재플레이 시 기존 인스턴스에 병합(강도 합산 + 병합 순간
+  1회 발동)
+- **단순화 표기:** 카드 선택 UI(Begone/Charge/Guards/CosmicIndifference/Glimmer/
+  PhotonCut/ForegoneConclusion/DecisionsDecisions/Tyranny)는 무작위 선택
+  `[선택→무작위]` (단, Charge는 서로 다른 카드 2장을 보장하도록 비복원 추출).
+  Colorless 카드 풀은 미이식 — Quasar/BundleOfJoy/ManifestAuthority(생성)/
+  SpectrumShift(파워)/HeirloomHammer(복제)는 생성 로직 생략(마커,
+  `[Colorless 미이식]`)
+- **적대 검증(8배치 대조, 87카드):** 발견·수정 5건 — Charge 무작위 선택 시
+  동일 카드 중복 선택(서로 다른 2장 보장으로 수정), Glitterstream 이월 블록이
+  시전 시점 블록 수정자(Frail 등) 미반영, DecisionsDecisions 자동 재생 루프가
+  소모형 스킬에서 조기 중단, **Plating 파워가 피격 기반으로 잘못 감소**(원본은
+  소유자 턴 시작마다 감소, 피해와 무관 — Ironclad **StoneArmor**/몬스터
+  **SewerClam**도 함께 수정), Guards 제자리 카드 치환이 카드 생성 훅
+  (Arsenal/PillarOfCreation/Supermassive) 미발동, MakeItSo 손패 복귀가 손패
+  가득 참 상태에서 뽑을더미 카드를 리다이렉트하지 않음 → 전부 원본 대조 후
+  수정 + 회귀 테스트 추가. 부수적으로 `Creature.compute_attack_damage`/
+  `take_damage`/`gain_block`의 파워 순회 중 자기 제거(**Vigor**)로 인한
+  `RuntimeError`도 함께 발견·수정(방어적 `list()` 순회)
+
 ## 🔬 생성 방법론 (Phase 6a)
 
 몬스터 17종은 멀티에이전트 파이프라인으로 이식:
@@ -216,6 +271,5 @@ Ironclad 5.6보다 낮음), 사망의 57%가 동일한 최종 엘리트 → 병�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6f+ 참조 — 나머지 캐릭터 카드 풀(Regent/Colorless),
-몬스터 잔여 ~87종, 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage),
-Ascension, 실제 맵 그래프.
+ROADMAP.md의 Phase 6g+ 참조 — Colorless 카드 풀, 몬스터 잔여 ~87종, 렐릭/포션 풀,
+미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension, 실제 맵 그래프.

@@ -333,8 +333,9 @@ class Artifact(STS2Power):
 
 
 class Plating(STS2Power):
-    """도금 — 턴 종료마다 스택만큼 블록 획득, 비차단 피해를 받으면 스택 1 감소.
-    (디컴파일 PlatingPower — SewerClam 등)"""
+    """도금 — 턴 종료마다 스택만큼 블록 획득, 소유자의 매 턴 시작마다 스택 1 감소
+    (피격 여부 무관). 단, 파워가 이미 존재한 채로 맞이하는 라운드 1 시작은 예외
+    (원본 PlatingPower.AfterSideTurnStart — TurnNumber/RoundNumber != 1)."""
     power_id = "plating"
     name = "Plating"
     is_debuff = False
@@ -343,11 +344,13 @@ class Plating(STS2Power):
         if self.owner and self.amount > 0:
             self.owner.gain_block(self.amount)
 
-    def on_take_damage(self, attacker, hp_lost: int) -> None:
-        if hp_lost > 0 and self.amount > 0:
-            self.amount -= 1
-            if self.amount <= 0:
-                self.remove()
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None) or getattr(self.owner, "combat_state", None)
+        if combat is not None and getattr(combat, "turn", 0) <= 1:
+            return  # 라운드 1은 감소 제외 (개전 Plating 보유 몬스터 대응)
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
 
 
 # ══════════════════════════════════════════
@@ -1807,6 +1810,428 @@ class ForbiddenGrimoire(STS2Power):
 
 
 # ══════════════════════════════════════════
+# Regent 카드 파워 (Phase 6f)
+# ══════════════════════════════════════════
+
+def _unpowered_hit(target, amount: int) -> None:
+    """Unpowered 피해 (원본 ValueProp.Unpowered): Strength/Vulnerable 미적용,
+    블록은 소모한다 (BlackHole/Reflect 등)."""
+    if amount <= 0 or target is None or target.is_dead:
+        return
+    blocked = min(getattr(target, "_block", 0), amount)
+    target._block -= blocked
+    target.lose_hp(amount - blocked, from_damage=True)
+
+
+class StarNextTurn(STS2Power):
+    """다음 턴 별 +amount (원본 StarNextTurnPower — AfterEnergyReset 후 제거)."""
+    power_id = "star_next_turn"
+    name = "Star Next Turn"
+    is_debuff = False
+
+    def after_energy_reset(self) -> None:
+        gain = getattr(self.owner, "gain_stars", None)
+        if gain:
+            gain(self.amount)
+        self.remove()
+
+
+class GenesisP(STS2Power):
+    """창세 — 매 턴 에너지 리셋 시 별 +amount (원본 GenesisPower)."""
+    power_id = "genesis"
+    name = "Genesis"
+    is_debuff = False
+
+    def after_energy_reset(self) -> None:
+        gain = getattr(self.owner, "gain_stars", None)
+        if gain:
+            gain(self.amount)
+
+
+class ParryP(STS2Power):
+    """받아넘기기 — 자체 효과 없음. SovereignBlade가 플레이 시
+    이 파워 수치만큼 블록 획득 (원본 ParryPower 마커)."""
+    power_id = "parry"
+    name = "Parry"
+    is_debuff = False
+
+
+class SeekingEdgeP(STS2Power):
+    """추적하는 칼날 — 자체 효과 없음. SovereignBlade가 전체 공격이 된다
+    (원본 SeekingEdgePower 마커, StackType.Single)."""
+    power_id = "seeking_edge"
+    name = "Seeking Edge"
+    is_debuff = False
+
+    def apply(self, owner, applier=None) -> None:
+        # 원본 StackType.Single — 중첩 없음
+        self.owner = owner
+        self.applier = applier
+        if self.power_id not in owner._powers:
+            owner._powers[self.power_id] = self
+
+
+class BlackHoleP(STS2Power):
+    """블랙홀 — 별을 소모한 카드 플레이 후 / 별 획득 시
+    모든 적에게 amount Unpowered 피해 (원본 BlackHolePower)."""
+    power_id = "black_hole"
+    name = "Black Hole"
+    is_debuff = False
+
+    def _damage_all(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is None:
+            return
+        for enemy in list(combat.alive_enemies):
+            _unpowered_hit(enemy, self.amount)
+
+    def on_card_played(self, card, combat) -> None:
+        # 원본 AfterCardPlayed: StarsSpent > 0인 플레이가 끝난 뒤 발동
+        if combat.last_star_paid > 0:
+            self._damage_all()
+
+    def after_stars_gained(self, amount: int) -> None:
+        if amount > 0:
+            self._damage_all()
+
+
+class ChildOfTheStarsP(STS2Power):
+    """별의 아이 — 별을 소모할 때마다 (amount × 소모량) 블록
+    (원본 ChildOfTheStarsPower — Unpowered 블록)."""
+    power_id = "child_of_the_stars"
+    name = "Child of the Stars"
+    is_debuff = False
+
+    def after_stars_spent(self, spent: int) -> None:
+        if spent > 0 and self.owner is not None:
+            self.owner._block += self.amount * spent  # Unpowered — 민첩 미적용
+
+
+class ConquerorP(STS2Power):
+    """정복자 (적 디버프) — SovereignBlade가 이 적에게 주는 피해 2배.
+    적 턴 종료마다 1 감소 (원본 ConquerorPower)."""
+    power_id = "conqueror"
+    name = "Conqueror"
+    is_debuff = True
+    damage_side = "incoming"
+
+    def modify_incoming(self, amount: int, source) -> int:
+        # SovereignBlade 플레이 중에만 2배 (원본 cardSource is SovereignBlade)
+        if getattr(source, "_playing_sovereign_blade", False):
+            return amount * 2
+        return amount
+
+    def on_turn_end(self) -> None:
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class MonarchsGazeP(STS2Power):
+    """군주의 시선 — 내 파워드 공격이 명중할 때마다 대상에게
+    임시 힘 -amount (원본 MonarchsGazePower → MonarchsGazeStrengthDownPower)."""
+    power_id = "monarchs_gaze"
+    name = "Monarch's Gaze"
+    is_debuff = False
+
+
+class MonologueP(STS2Power):
+    """독백 — 이후 카드를 플레이할 때마다 힘 +strength_per (자기 플레이 제외),
+    턴 종료 시 파워 제거 + 부여한 힘 전부 회수 (원본 MonologuePower)."""
+    power_id = "monologue"
+    name = "Monologue"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0, source_card=None):
+        super().__init__(amount)
+        self.strength_per = amount   # 카드 플레이당 힘 (원본 PowerVar<StrengthPower>)
+        self.strength_applied = 0    # 이번 턴 부여 누계 (원본 StrengthApplied)
+        self._source_card = source_card
+
+    def apply(self, owner, applier=None) -> None:
+        self.owner = owner
+        self.applier = applier
+        existing = owner._powers.get(self.power_id)
+        if existing is None:
+            owner._powers[self.power_id] = self
+            return
+        # 재플레이 병합: 기존 인스턴스는 이 Monologue 플레이 자체에도 발동
+        # (원본 — 새 인스턴스만 자기 플레이를 기록하지 않음)
+        existing.owner.apply_power(Strength(existing.strength_per))
+        existing.strength_applied += existing.strength_per
+        existing.strength_per += self.strength_per
+        existing.amount = existing.strength_per
+        existing._source_card = self._source_card
+
+    def on_card_played(self, card, combat) -> None:
+        if card is self._source_card:
+            self._source_card = None  # 자기 자신의 플레이 1회 무시
+            return
+        if self.owner is not None and self.strength_per != 0:
+            self.owner.apply_power(Strength(self.strength_per))
+            self.strength_applied += self.strength_per
+
+    def on_turn_end(self) -> None:
+        if self.owner is not None:
+            applied = self.strength_applied
+            self.remove()
+            if applied:
+                self.owner.apply_power(Strength(-applied))
+
+
+class PaleBlueDotP(STS2Power):
+    """창백한 푸른 점 — 한 턴에 카드 5장 플레이 시 다음 턴 드로우 +amount
+    (턴당 1회, 원본 PaleBlueDotPower — CardPlay 5)."""
+    power_id = "pale_blue_dot"
+    name = "Pale Blue Dot"
+    is_debuff = False
+    THRESHOLD = 5  # 원본 cardPlayThresholdValue
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._activated_this_turn = False
+
+    def on_card_played(self, card, combat) -> None:
+        if self._activated_this_turn:
+            return
+        if combat.cards_played_this_turn >= self.THRESHOLD:
+            self._activated_this_turn = True
+            self.owner.apply_power(DrawCardsNextTurn(self.amount))
+
+    def on_turn_end(self) -> None:
+        self._activated_this_turn = False
+
+
+class OrbitP(STS2Power):
+    """궤도 — 카드로 에너지를 누적 4 소모할 때마다 에너지 +amount
+    (원본 OrbitPower — 전투 누적, _energyIncrement=4)."""
+    power_id = "orbit"
+    name = "Orbit"
+    is_debuff = False
+    INCREMENT = 4
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._energy_spent = 0
+        self._trigger_count = 0
+
+    def after_energy_spent(self, card, amount: int) -> None:
+        if amount <= 0:
+            return
+        self._energy_spent += amount
+        triggers = self._energy_spent // self.INCREMENT - self._trigger_count
+        if triggers > 0:
+            self.owner.gain_energy(self.amount * triggers)
+            self._trigger_count += triggers
+
+
+class ReflectP(STS2Power):
+    """반사 — 파워드 공격을 블록으로 막으면 막은 만큼 공격자에게
+    Unpowered 피해. 내 턴 시작마다 1 감소 (원본 ReflectPower)."""
+    power_id = "reflect"
+    name = "Reflect"
+    is_debuff = False
+
+    def on_damage_blocked(self, source, blocked: int) -> None:
+        if blocked > 0 and source is not None and source is not self.owner:
+            _unpowered_hit(source, blocked)
+
+    def on_turn_start(self) -> None:
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class RetainHandP(STS2Power):
+    """손패 유지 — 턴 종료 시 손패를 버리지 않는다 (Ethereal 소모는 그대로).
+    턴 종료마다 1 감소 (원본 RetainHandPower — ShouldFlush=false).
+    차감은 combat._discard_hand에서 처리."""
+    power_id = "retain_hand"
+    name = "Retain Hand"
+    is_debuff = False
+
+
+class ForegoneConclusionP(STS2Power):
+    """예정된 결말 — 다음 턴 드로우 전에 뽑을 더미에서 amount장을 손패로
+    가져온 뒤 제거 (원본 ForegoneConclusionPower). [선택→무작위]"""
+    power_id = "foregone_conclusion"
+    name = "Foregone Conclusion"
+    is_debuff = False
+
+    def before_hand_draw(self, combat) -> None:
+        # 원본 ShuffleIfNecessary — 뽑을 더미가 비면 버림 더미 셔플
+        if not combat.draw_pile and combat.discard_pile:
+            combat.draw_pile = combat.discard_pile
+            combat.discard_pile = []
+            combat.rng.shuffle(combat.draw_pile)
+        for _ in range(self.amount):
+            if not combat.draw_pile or len(combat.hand) >= 10:
+                break
+            card = combat.rng.choice(combat.draw_pile)
+            combat.draw_pile.remove(card)
+            combat.hand.append(card)
+        self.remove()
+
+
+class SpectrumShiftP(STS2Power):
+    """스펙트럼 변이 — 매 턴 드로우 전에 무작위 Colorless 카드 amount장을
+    손패에 생성 (원본 SpectrumShiftPower).
+    Colorless 풀 미이식 — 전투 내 효과 없음(마커, 문서화)."""
+    power_id = "spectrum_shift"
+    name = "Spectrum Shift"
+    is_debuff = False
+
+
+class TyrannyP(STS2Power):
+    """폭정 — 드로우 +amount, 턴 시작(드로우 후) 손패에서 amount장 소모
+    (원본 TyrannyPower — ModifyHandDraw + AfterPlayerTurnStart). [선택→무작위]"""
+    power_id = "tyranny"
+    name = "Tyranny"
+    is_debuff = False
+
+    def modify_hand_draw(self, count: int) -> int:
+        return count + self.amount
+
+    def after_hand_draw(self, combat) -> None:
+        combat.exhaust_from_hand(self.amount)
+
+
+class SealedThroneP(STS2Power):
+    """봉인된 왕좌 — 카드를 플레이할 때마다(효과 처리 전) 별 +amount
+    (원본 TheSealedThronePower — BeforeCardPlayed. 자기 플레이는 파워 적용
+    전에 시작되어 미발동)."""
+    power_id = "sealed_throne"
+    name = "The Sealed Throne"
+    is_debuff = False
+
+    def before_card_played(self, card, combat) -> None:
+        gain = getattr(self.owner, "gain_stars", None)
+        if gain:
+            gain(self.amount)
+
+
+class ArsenalP(STS2Power):
+    """무기고 — 전투 중 카드가 생성될 때마다 힘 +amount
+    (원본 ArsenalPower — AfterCardGeneratedForCombat)."""
+    power_id = "arsenal"
+    name = "Arsenal"
+    is_debuff = False
+
+    def on_card_generated(self, card, combat) -> None:
+        if self.owner is not None:
+            self.owner.apply_power(Strength(self.amount))
+
+
+class PillarOfCreationP(STS2Power):
+    """창조의 기둥 — 전투 중 카드가 생성될 때마다 블록 +amount
+    (원본 PillarOfCreationPower — Unpowered 블록)."""
+    power_id = "pillar_of_creation"
+    name = "Pillar of Creation"
+    is_debuff = False
+
+    def on_card_generated(self, card, combat) -> None:
+        if self.owner is not None:
+            self.owner._block += self.amount  # Unpowered — 민첩 미적용
+
+
+class RoyaltiesP(STS2Power):
+    """인세 — 전투 종료 시 골드 +amount 추가 보상
+    (원본 RoyaltiesPower — AfterCombatEnd GoldReward)."""
+    power_id = "royalties"
+    name = "Royalties"
+    is_debuff = False
+
+    def on_combat_end(self, victory: bool) -> None:
+        if victory and self.owner is not None:
+            character = getattr(self.owner, "character", None)
+            if character is not None:
+                character.gain_gold(self.amount)
+
+
+class SwordSageP(STS2Power):
+    """검성 — 모든 SovereignBlade에 Replay +amount (플레이 시 추가 발동).
+    이후 생성되는 SovereignBlade에도 적용 (원본 SwordSagePower)."""
+    power_id = "sword_sage"
+    name = "Sword Sage"
+    is_debuff = False
+
+    def _blades(self):
+        from sts2_sim.cards.regent import SovereignBlade
+        combat = getattr(self.owner, "combat", None)
+        if combat is None:
+            return []
+        piles = combat.hand + combat.draw_pile + combat.discard_pile + combat.exhaust_pile
+        return [c for c in piles if isinstance(c, SovereignBlade)]
+
+    def apply(self, owner, applier=None) -> None:
+        self.owner = owner
+        delta = self.amount
+        super().apply(owner, applier)
+        # 기존 블레이드 전부에 Replay +delta (원본 AfterPowerAmountChanged)
+        for blade in owner._powers[self.power_id]._blades():
+            blade._extra_plays += delta
+
+    def on_card_generated(self, card, combat) -> None:
+        from sts2_sim.cards.regent import SovereignBlade
+        if isinstance(card, SovereignBlade):
+            card._extra_plays += self.amount
+
+    def remove(self) -> None:
+        # 원본 AfterRemoved — 블레이드의 Replay 회수
+        for blade in self._blades():
+            blade._extra_plays = max(0, blade._extra_plays - self.amount)
+        super().remove()
+
+
+class VoidFormP(STS2Power):
+    """공허의 형상 — 매 턴 처음 amount장의 카드는 에너지/별 비용 0
+    (원본 VoidFormPower — 자동 플레이 제외)."""
+    power_id = "void_form"
+    name = "Void Form"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._plays_this_turn = 0
+
+    def _active(self, combat) -> bool:
+        return self._plays_this_turn < self.amount and not getattr(
+            combat, "_auto_playing", False)
+
+    def modify_card_cost(self, card, cost: int) -> int:
+        combat = getattr(self.owner, "combat", None)
+        if combat is not None and self._active(combat):
+            return 0
+        return cost
+
+    def modify_card_star_cost(self, card, star_cost: int) -> int:
+        combat = getattr(self.owner, "combat", None)
+        if combat is not None and self._active(combat):
+            return 0
+        return star_cost
+
+    def on_card_played(self, card, combat) -> None:
+        if not getattr(combat, "_auto_playing", False):
+            self._plays_this_turn += 1
+
+    def on_turn_start(self) -> None:
+        self._plays_this_turn = 0
+
+
+class FurnaceP(STS2Power):
+    """용광로 — 내 턴 시작마다 Forge amount (원본 FurnacePower)."""
+    power_id = "furnace"
+    name = "Furnace"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is not None:
+            from sts2_sim.cards.regent import _forge
+            _forge(self.owner, combat, self.amount)
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -1936,6 +2361,30 @@ POWER_REGISTRY = {
     "summon_next_turn": SummonNextTurn,
     "debilitate": Debilitate,
     "forbidden_grimoire": ForbiddenGrimoire,
+    # Regent (Phase 6f)
+    "star_next_turn": StarNextTurn,
+    "genesis": GenesisP,
+    "parry": ParryP,
+    "seeking_edge": SeekingEdgeP,
+    "black_hole": BlackHoleP,
+    "child_of_the_stars": ChildOfTheStarsP,
+    "conqueror": ConquerorP,
+    "monarchs_gaze": MonarchsGazeP,
+    "monologue": MonologueP,
+    "pale_blue_dot": PaleBlueDotP,
+    "orbit": OrbitP,
+    "reflect": ReflectP,
+    "retain_hand": RetainHandP,
+    "foregone_conclusion": ForegoneConclusionP,
+    "spectrum_shift": SpectrumShiftP,
+    "tyranny": TyrannyP,
+    "sealed_throne": SealedThroneP,
+    "arsenal": ArsenalP,
+    "pillar_of_creation": PillarOfCreationP,
+    "royalties": RoyaltiesP,
+    "sword_sage": SwordSageP,
+    "void_form": VoidFormP,
+    "furnace": FurnaceP,
 }
 
 

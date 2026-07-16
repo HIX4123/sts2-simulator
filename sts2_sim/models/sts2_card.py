@@ -64,6 +64,16 @@ def _deal_attack(source, target, base_damage: int) -> dict:
         if tracking > 0 and target.get_power_amount("weak") > 0:
             dmg = int(dmg * (1 + tracking / 100))
     result = target.take_damage(dmg, source=source)
+    # BeatIntoShape — 이번 턴 이 대상이 받은 파워드 공격 히트 수 집계
+    target._hits_taken_this_turn = getattr(target, "_hits_taken_this_turn", 0) + 1
+    # MonarchsGaze — 내 파워드 공격이 명중할 때마다 대상 임시 힘 -amount
+    # (원본 dealer == Owner — Osty 공격은 미발동)
+    if (not is_osty and hasattr(controller, "get_power_amount")
+            and hasattr(target, "apply_power")):
+        mg = controller.get_power_amount("monarchs_gaze")
+        if mg > 0 and not target.is_dead:
+            from sts2_sim.models.sts2_power import TempStrength
+            target.apply_power(TempStrength(-mg), applier=controller)
     # Envenom — 공격으로 비차단 피해를 주면 중독 부여
     if (result.get("hp_lost", 0) > 0 and hasattr(source, "get_power_amount")
             and hasattr(target, "apply_power")):

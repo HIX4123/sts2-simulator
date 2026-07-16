@@ -117,9 +117,42 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
   PullFromBelow 잘못된 Ethereal화·자기 집계, Eidolon 오소모, Severance Soul 소실 —
   전부 원본 대조 후 수정 및 회귀 테스트 추가
 
-## 📋 Phase 6f+ — 남은 확대 (계획)
+## ✅ Phase 6f — Regent 카드 풀 (완료)
 
-- [ ] 나머지 캐릭터 카드 풀 (Regent/Colorless — 전체 593종 중 ~188종 이식)
+- [x] **Regent 카드 풀 완전 이식**: `RegentCardPool` 90종 중 싱글플레이 82종
+  (멀티 전용 4종 제외: Constellation/HammerTime/Largesse/Plot;
+  스타터 4종 Strike/Defend/FallingStar/Venerate는 기존 구현) +
+  SovereignBlade/MinionStrike/MinionDiveBomb/MinionSacrifice/Debris 토큰
+- [x] 카드 파워 23종 신규 배선 (StarNextTurn/GenesisP/ParryP/SeekingEdgeP/BlackHoleP/
+  ChildOfTheStarsP/ConquerorP/MonarchsGazeP/MonologueP/PaleBlueDotP/OrbitP/ReflectP/
+  RetainHandP/ForegoneConclusionP/SpectrumShiftP/TyrannyP/SealedThroneP/ArsenalP/
+  PillarOfCreationP/RoyaltiesP/SwordSageP/VoidFormP/FurnaceP)
+- [x] **Stars 자원 엔진**: 별 획득/소모(턴 간 지속, DivineRight 전투 시작 +3),
+  별 X코스트(Stardust — 전량 소비), 카드 비용 파워 수정 훅(VoidForm)
+- [x] **Forge/SovereignBlade 엔진**: Forge(n) — 미소모 블레이드 없으면 손패 생성,
+  소모 더미 포함 전체 블레이드 데미지 누적; SovereignBlade(Parry 블록/SeekingEdge
+  전체화/Conqueror 2배/SwordSage Replay 연동)
+- [x] Replay 엔진 재사용(SwordSage — combat._extra_plays), 카드 생성 파이프라인 훅
+  재사용(Arsenal/PillarOfCreation/Supermassive 카운터)
+- [x] 자동 플레이 훅 확장: on_pre_play_phase(Bombardment 소모 더미 자동 선플레이),
+  on_post_play_phase(IAmInvincible 뽑을 더미 맨 위 자동 후플레이)
+- [x] 멀티에이전트 적대 검증 (8배치로 87카드를 디컴파일 원본과 대조).
+  발견·수정: Charge 무작위 선택 시 동일 카드 중복 선택 가능(서로 다른 2장 보장으로 수정),
+  Glitterstream 이월 블록이 시전 시점 블록 수정자(Frail 등) 미반영,
+  DecisionsDecisions 자동 재생 루프가 소모형 스킬에서 조기 중단(3회 미만 재생),
+  Plating 파워가 피격 기반으로 감소(원본은 소유자 턴 시작마다 감소, 피해와 무관 —
+  Ironclad StoneArmor/몬스터 SewerClam도 함께 수정), Guards 제자리 카드 치환이
+  카드 생성 훅(Arsenal/PillarOfCreation/Supermassive) 미발동, MakeItSo 손패 복귀가
+  손패 가득 참 상태에서 뽑을더미 카드를 리다이렉트하지 않음 —
+  전부 원본 대조 후 수정 및 회귀 테스트 추가. 부수적으로 `compute_attack_damage`/
+  `take_damage`/`gain_block`의 파워 순회가 콜백 중 자기 제거(Vigor)로 인해
+  `RuntimeError`를 일으키는 기존 버그도 함께 발견·수정(list() 방어 순회)
+
+## 📋 Phase 6g+ — 남은 확대 (계획)
+
+- [ ] Colorless 카드 풀 (`Models.CardPools.ColorlessCardPool`) — Regent 5개 카드/파워가
+  참조하는 미이식 생성 로직(Quasar/BundleOfJoy/ManifestAuthority/SpectrumShift/
+  HeirloomHammer) 포함
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
