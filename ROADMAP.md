@@ -193,6 +193,21 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
   개념 자체를 구현하지 않기로 한 프로젝트 전역 결정(Phase 6f부터 문서화됨)의
   직접적 귀결이며 JackOfAllTrades만의 누락이 아님
 
+## ✅ Phase 6h — `--verbose` 모드 (완료)
+
+- [x] `CombatState.verbose`/`CombatState.log` — 턴 시작(플레이어 HP/블록/에너지 +
+  적 인텐트), 카드 플레이(이름/대상/코스트 + 결과 HP/블록), 자동 플레이(Sly/
+  Hellraiser/Mayhem 등), 몬스터 턴 행동 결과, 전투 종료(승패)를 로그로 남김.
+  `verbose=False`(기본값)면 `_log()`가 즉시 반환해 완전 무비용
+- [x] `RunState.play(..., verbose=False)` — 층별 요약 로그(기존 `combat_log`,
+  Phase 4부터 존재)에 턴/카드 상세 로그를 끼워 넣음
+- [x] `stats.run_stats(..., verbose=False)` / CLI `--verbose` 플래그 —
+  `python3 -m sts2_sim.core.stats <char> <n> --policy greedy --verbose`.
+  로그 폭주 방지를 위해 처음 `VERBOSE_RUN_CAP`(5)개 런만 전체 로그 출력,
+  이후 런은 한 줄 요약(승패/층/HP/골드)만 출력
+- [x] 회귀 테스트 추가(`test_sts2_phase5.py`): verbose on/off 시 결과(승패/층/HP)가
+  동일함을 확인, verbose=False는 턴 단위 로그가 전혀 남지 않음을 확인
+
 ## 📋 Phase 6g+ — 남은 확대 (계획)
 
 - [ ] **엔진 아키텍처 확장 (Phase 6g 검증에서 발견, 후속 작업으로 분리)**:
@@ -236,6 +251,7 @@ python3 test_sts2_phase6e.py      # Necrobinder 카드 풀 82종 + Osty/Doom/Eth
 **통계 실행:**
 ```bash
 python3 -m sts2_sim.core.stats ironclad 50 --policy greedy
+python3 -m sts2_sim.core.stats ironclad 50 --policy greedy --verbose  # 턴/카드 단위 상세 로그
 ```
 
 **디컴파일 재생성 (참고):**

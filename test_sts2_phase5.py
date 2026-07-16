@@ -122,6 +122,33 @@ def test_run_progression():
     print(f"✅ 업그레이드된 카드: {len(upgraded)}장")
 
 
+def test_verbose_mode():
+    """--verbose: 턴/카드/피격 단위 combat_log 생성, 비활성 시 완전 무비용."""
+    print("\n=== --verbose 모드 ===\n")
+
+    quiet = RunState("ironclad", seed=3).play(policy=GreedyPolicy())
+    loud = RunState("ironclad", seed=3).play(policy=GreedyPolicy(), verbose=True)
+    # verbose=False여도 층별 요약(승패/휴식) 로그는 기존과 동일하게 남는다 —
+    # verbose=True는 여기에 턴/카드/피격 단위 상세 로그가 추가로 끼어든다.
+    assert len(loud.combat_log) > len(quiet.combat_log), \
+        "verbose=True는 quiet보다 더 상세한 로그를 남겨야 함"
+    assert any("Turn" in line for line in loud.combat_log)
+    assert any("VICTORY" in line or "DEFEAT" in line for line in loud.combat_log)
+    assert not any("Turn" in line for line in quiet.combat_log), \
+        "verbose=False면 턴 단위 상세 로그가 없어야 함"
+    # 동일 시드 — 결과(승패/층/HP/골드)는 verbose 여부와 무관하게 동일해야 함
+    assert quiet.victory == loud.victory
+    assert quiet.floors_cleared == loud.floors_cleared
+    assert quiet.final_hp == loud.final_hp
+    print(f"✅ verbose=False → {len(quiet.combat_log)}줄(층 요약만), "
+          f"verbose=True → {len(loud.combat_log)}줄(턴/카드 상세 포함), "
+          f"결과는 동일(승패={loud.victory}, 층={loud.floors_cleared})")
+
+    s = run_stats("ironclad", n_runs=2, policy_name="greedy", verbose=True)
+    assert all(len(r.combat_log) > 0 for r in s.results), "run_stats(verbose=True)도 로그를 채워야 함"
+    print("✅ run_stats(verbose=True): 모든 런의 combat_log 채워짐")
+
+
 def main():
     print("🧪 STS2 Phase 5 통합 테스트\n")
     test_greedy_lethal()
@@ -130,6 +157,7 @@ def main():
     test_policy_comparison()
     test_stats_runner()
     test_run_progression()
+    test_verbose_mode()
 
     print("\n" + "=" * 60)
     print("✅ Phase 5 모든 테스트 통과!")

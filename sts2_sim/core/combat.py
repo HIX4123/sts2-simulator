@@ -69,6 +69,8 @@ class CombatState:
         self.end_turn_requested = False       # VoidForm — 플레이 시 턴 강제 종료
         self._auto_playing = False            # VoidForm — 자동 플레이 제외 판정
         self.cards_played_this_combat = 0     # GoldAxe (Colorless) — 전투 전체 누적
+        self.verbose = False                  # --verbose — 턴/카드/피격 단위 상세 로그
+        self.log: List[str] = []              # verbose=True일 때만 누적
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -77,6 +79,11 @@ class CombatState:
     @property
     def alive_enemies(self) -> List["MonsterModel"]:
         return [m for m in self.monsters if not m.is_gone]
+
+    def _log(self, msg: str) -> None:
+        """--verbose 전용 로그 누적 (verbose=False면 완전 무비용)."""
+        if self.verbose:
+            self.log.append(msg)
 
     def _reshuffle(self) -> None:
         """버림 더미를 뽑을 더미로 셔플 (원본 AfterShuffle 훅 통지 — Stratagem)."""
@@ -319,6 +326,14 @@ class CombatState:
             for monster in self.monsters:
                 monster._hits_taken_this_turn = 0  # BeatIntoShape 턴 집계
             self.player.energy = self.player.max_energy
+            self._log(f"--- Turn {self.turn} --- Player HP {self.player.current_hp}/"
+                      f"{self.player.max_hp} Block {self.player.block} "
+                      f"Energy {self.player.energy}")
+            for enemy in self.alive_enemies:
+                intent = enemy.get_current_intent()
+                dmg = f" dmg={intent.damage}x{intent.times}" if intent.damage else ""
+                self._log(f"  {enemy.title} HP {enemy.current_hp}/{enemy.max_hp} "
+                          f"intent={intent.intent_type.name}{dmg}")
             # EnergyNextTurn/LightningRod/Spinner (원본 AfterEnergyReset)
             self.notify_player_powers("after_energy_reset")
             for relic in self.player.relics:
@@ -405,6 +420,10 @@ class CombatState:
                     if on_start:
                         on_start()
                 monster.take_turn([self.player])
+                if self.verbose:
+                    self._log(f"  {monster.title} acts -> Player HP "
+                              f"{self.player.current_hp}/{self.player.max_hp} "
+                              f"Block {self.player.block}")
                 for power in list(monster._powers.values()):
                     on_end = getattr(power, "on_turn_end", None)
                     if on_end:
@@ -511,6 +530,9 @@ class CombatState:
         self.notify_player_powers("before_card_played", card, self)
 
         targets = self._resolve_targets(card, target)
+        if self.verbose:
+            tgt = f" -> {targets[0].title}" if targets else ""
+            self._log(f"  Play {card.name}{tgt} (cost {paid})")
         card.use(self.player, targets, self)
 
         # OneTwoPunch — 공격 카드 2회 발동
@@ -563,6 +585,10 @@ class CombatState:
         self._broadcast_card_played(card, paid)  # RightHandHand — 버림 더미 회수
         self._trigger_strangle()
         self.reap_deaths()  # Melancholy — 사망 집계
+        if self.verbose:
+            enemy_state = ", ".join(
+                f"{m.title} {m.current_hp}/{m.max_hp}" for m in self.alive_enemies)
+            self._log(f"    -> Player Block {self.player.block} | {enemy_state}")
         return True
 
     def _broadcast_card_played(self, card: "STS2Card", paid: int) -> None:
@@ -666,6 +692,9 @@ class CombatState:
         self._auto_playing = True  # VoidForm — 자동 플레이는 무료 카드 수 미차감
         self.notify_player_powers("before_card_played", card, self)  # SealedThrone
         targets = self._resolve_targets(card, target)
+        if self.verbose:
+            tgt = f" -> {targets[0].title}" if targets else ""
+            self._log(f"  [Auto] Play {card.name}{tgt}")
         card.use(self.player, targets, self)
         self._settle_card(card, force_exhaust=force_exhaust)
         self.player._first_attack_this_turn = False
@@ -736,6 +765,8 @@ class CombatState:
         for relic in self.player.relics:
             relic.on_combat_end(victory)
         self.player.sync_to_character()
+        self._log(f"=== {'VICTORY' if victory else 'DEFEAT'} "
+                  f"(turn {self.turn}, HP {self.player.current_hp}) ===")
         return CombatResult(victory=victory, turns=self.turn, player_hp=self.player.current_hp)
 
 

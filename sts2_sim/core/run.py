@@ -129,7 +129,8 @@ class RunState:
         if card:
             self.deck.append(card)
 
-    def play(self, policy=None, floor_plan: Optional[List[str]] = None) -> RunResult:
+    def play(self, policy=None, floor_plan: Optional[List[str]] = None,
+             verbose: bool = False) -> RunResult:
         policy = policy or SimplePolicy()
         plan = floor_plan or DEFAULT_FLOOR_PLAN
         log: List[str] = []
@@ -144,7 +145,11 @@ class RunState:
             names = ", ".join(m.title for m in monsters)
             player = Player(self.character, deck=self.deck)
             combat = CombatState(player, monsters, seed=self.rng.randrange(1 << 30))
+            combat.verbose = verbose
             result = combat.run(policy)
+            if verbose:
+                log.append(f"F{floor_num} [{names}]")
+                log.extend(f"  {line}" for line in combat.log)
 
             if not result.victory:
                 log.append(f"F{floor_num} 패배: [{names}] {result.turns}턴, HP {result.player_hp}")
