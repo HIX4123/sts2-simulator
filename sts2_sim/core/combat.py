@@ -68,6 +68,7 @@ class CombatState:
         self.last_star_paid = 0               # BlackHole (직전 플레이의 별 소모량)
         self.end_turn_requested = False       # VoidForm — 플레이 시 턴 강제 종료
         self._auto_playing = False            # VoidForm — 자동 플레이 제외 판정
+        self.cards_played_this_combat = 0     # GoldAxe (Colorless) — 전투 전체 누적
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -77,6 +78,13 @@ class CombatState:
     def alive_enemies(self) -> List["MonsterModel"]:
         return [m for m in self.monsters if not m.is_gone]
 
+    def _reshuffle(self) -> None:
+        """버림 더미를 뽑을 더미로 셔플 (원본 AfterShuffle 훅 통지 — Stratagem)."""
+        self.draw_pile = self.discard_pile
+        self.discard_pile = []
+        self.rng.shuffle(self.draw_pile)
+        self.notify_player_powers("after_shuffle", self)
+
     def draw_cards(self, count: int) -> None:
         if self.player.get_power_amount("no_draw") > 0:
             return
@@ -84,9 +92,7 @@ class CombatState:
             if not self.draw_pile:
                 if not self.discard_pile:
                     return
-                self.draw_pile = self.discard_pile
-                self.discard_pile = []
-                self.rng.shuffle(self.draw_pile)
+                self._reshuffle()
             card = self.draw_pile.pop()
             self.hand.append(card)
             self.cards_drawn_this_combat += 1
@@ -204,6 +210,19 @@ class CombatState:
                         if hook:
                             hook(card, self)
         return made
+
+    def auto_play_from_draw_pile(self, count: int) -> None:
+        """뽑을 더미 맨 위 count장 자동 플레이 (원본 CardPileCmd.AutoPlayFromDrawPile
+        — Mayhem, Colorless Phase 6g)."""
+        for _ in range(count):
+            if not self.alive_enemies:
+                return
+            if not self.draw_pile:
+                if not self.discard_pile:
+                    return
+                self._reshuffle()
+            card = self.draw_pile.pop()
+            self.auto_play(card)
 
     def record_orb_channel(self, orb) -> None:
         """오브 채널 기록 (Voltaic — 이번 전투 라이트닝 채널 수)."""
@@ -324,6 +343,12 @@ class CombatState:
                 modify = getattr(power, "modify_hand_draw", None)
                 if modify:  # ToolsOfTheTrade / DrawCardsNextTurn
                     draw_count = modify(draw_count)
+            # Bolas/ThrummingHatchet(Colorless) — 직전 턴에 플레이된 카드 손패 복귀
+            for pile in (self.discard_pile, self.draw_pile):
+                for card in list(pile):
+                    hook = getattr(card, "on_before_hand_draw", None)
+                    if hook and card in pile:
+                        hook(self)
             self.notify_player_powers("before_hand_draw", self)  # CreativeAI 파워 카드 생성
             self.in_hand_draw = True
             self.draw_cards(draw_count)
@@ -335,6 +360,7 @@ class CombatState:
                 hook = getattr(card, "on_pre_play_phase", None)
                 if hook and card in self.exhaust_pile:
                     hook(self)
+            self.notify_player_powers("on_pre_play_phase", self)  # Mayhem(Colorless)
             if not self.alive_enemies:
                 return self._finish(True)
 
@@ -439,6 +465,7 @@ class CombatState:
         self.energy_spent_this_turn += paid
         prior_plays = self.cards_played_this_turn  # EchoForm — 이번 턴 몇 번째 플레이인지
         self.cards_played_this_turn += 1
+        self.cards_played_this_combat += 1
         if card.card_type == CardType.ATTACK and paid == 0:
             self.zero_cost_attacks_this_turn += 1  # 원본 CardPlayStartedEntry(EnergyValue==0, Attack)
         if card.is_ethereal:
@@ -587,8 +614,28 @@ class CombatState:
             self.draw_pile.append(card)
         elif settle_to == "hand" and len(self.hand) < 10:  # ParticleWall — 손패로
             self.hand.append(card)
+        elif settle_to == "draw_random":  # TheBall(Colorless) — 뽑을 더미 무작위 위치
+            idx = self.rng.randrange(len(self.draw_pile) + 1)
+            self.draw_pile.insert(idx, card)
         else:
-            self.discard_pile.append(card)
+            override = self._settle_override(card)
+            if override == "draw_top":
+                self.draw_pile.append(card)
+            else:
+                self.discard_pile.append(card)
+
+    def _settle_override(self, card: "STS2Card") -> Optional[str]:
+        """파워가 기본 버림 경로를 재정의 (Nostalgia — 이번 턴 첫 N장 공격/스킬을
+        뽑을 더미 맨 위로 대신 이동)."""
+        if card.card_type not in (CardType.ATTACK, CardType.SKILL):
+            return None
+        for power in self.player._powers.values():
+            fn = getattr(power, "modify_settle_pile", None)
+            if fn:
+                result = fn(card, self)
+                if result:
+                    return result
+        return None
 
     def auto_play(self, card: "STS2Card", force_exhaust: bool = False) -> None:
         """비용 없이 카드 자동 플레이 (Havoc/Cascade/Stampede/Hellraiser).
@@ -604,6 +651,7 @@ class CombatState:
             card.x_value = 0  # X코스트 자동 플레이는 X=0 (원본 AutoPlay 동일)
         card._last_paid = 0  # 자동 플레이는 에너지 미지불 (Feral 판정 대상)
         self.cards_played_this_turn += 1
+        self.cards_played_this_combat += 1
         if card.card_type == CardType.ATTACK:
             self.attacks_played_this_turn += 1
             self.zero_cost_attacks_this_turn += 1  # 원본 CardPlayStartedEntry(EnergyValue==0)

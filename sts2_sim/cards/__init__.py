@@ -4,3 +4,4 @@ from sts2_sim.cards import silent  # noqa: F401
 from sts2_sim.cards import defect  # noqa: F401
 from sts2_sim.cards import necrobinder  # noqa: F401
 from sts2_sim.cards import regent  # noqa: F401
+from sts2_sim.cards import colorless  # noqa: F401

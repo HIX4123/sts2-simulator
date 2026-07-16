@@ -10,7 +10,8 @@ Regent 카드 풀 — 디컴파일 MegaCrit.Sts2.Core.Models.CardPools.RegentCar
 
 모든 수치는 디컴파일 .cs의 CanonicalVars/OnUpgrade 그대로.
 카드 선택 UI가 필요한 효과는 무작위 선택으로 대체하고 주석에 [선택→무작위] 표기.
-Colorless 카드 풀은 미이식 — 생성 효과는 생략하고 [Colorless 미이식] 표기.
+Colorless 카드풀 참조(Quasar/BundleOfJoy/ManifestAuthority/HeirloomHammer)는
+Phase 6g에서 sts2_sim.cards.colorless._COLORLESS_IDS로 배선 완료.
 
 Regent 메커니즘:
   - Stars: 카드 플레이의 별 비용 자원 (턴 간 지속, DivineRight 전투 시작 +3)
@@ -765,13 +766,23 @@ class LunarBlast(STS2Card):
 
 
 class ManifestAuthority(_Block):
-    """권위 현현 — 7블록 (업글 8) + Colorless 1장 손패 생성.
-    [Colorless 미이식 — 생성 생략]"""
+    """권위 현현 — 7블록 (업글 8) + Colorless 카드풀 무작위 1장 손패 생성
+    (업글: 강화 상태로 생성)."""
     card_id = "manifest_authority"
     name = "Manifest Authority"
     rarity = Rarity.UNCOMMON
     cost = 1
     blk, blk_up = 7, 8
+
+    def use(self, source, targets, combat=None) -> None:
+        super().use(source, targets, combat)
+        if combat is None:
+            return
+        from sts2_sim.cards.colorless import _COLORLESS_GENERATABLE_IDS
+        if not _COLORLESS_GENERATABLE_IDS:
+            return
+        cid = combat.rng.choice(_COLORLESS_GENERATABLE_IDS)
+        combat.generate_card(cid, upgraded=self.upgraded, to="hand")
 
 
 class Monologue(STS2Card):
@@ -857,8 +868,9 @@ class Prophesize(STS2Card):
 
 
 class Quasar(STS2Card):
-    """퀘이사 — 0코스트/별 2, Colorless 3장 중 1장 선택해 손패에.
-    [Colorless 미이식 — 생성 생략]"""
+    """퀘이사 — 0코스트/별 2, Colorless 카드풀에서 서로 다른 무작위 3장 중
+    1장을 손패에 생성(업글: 3장 모두 강화 상태로 뽑음). [선택→무작위]
+    (원본 Quasar — CardSelectCmd.FromChooseACardScreen, canSkip)."""
     card_id = "quasar"
     name = "Quasar"
     card_type = CardType.SKILL
@@ -867,7 +879,14 @@ class Quasar(STS2Card):
     star_cost = 2
 
     def use(self, source, targets, combat=None) -> None:
-        pass  # Colorless 풀 미이식
+        if combat is None:
+            return
+        from sts2_sim.cards.colorless import _COLORLESS_GENERATABLE_IDS
+        n = min(3, len(_COLORLESS_GENERATABLE_IDS))
+        if n <= 0:
+            return
+        cid = combat.rng.choice(combat.rng.sample(_COLORLESS_GENERATABLE_IDS, n))
+        combat.generate_card(cid, upgraded=self.upgraded, to="hand")
 
 
 class Radiate(STS2Card):
@@ -960,8 +979,7 @@ class ShiningStrike(_Attack):
 
 
 class SpectrumShift(_CostDownOnUpgrade, STS2Card):
-    """스펙트럼 변이 — 2코스트(업글 1) 파워: 매 턴 Colorless 1장 손패 생성.
-    [Colorless 미이식 — 생성 생략(마커)]"""
+    """스펙트럼 변이 — 2코스트(업글 1) 파워: 매 턴 드로우 전 Colorless 1장 손패 생성."""
     card_id = "spectrum_shift"
     name = "Spectrum Shift"
     card_type = CardType.POWER
@@ -1139,8 +1157,8 @@ class Bombardment(_Attack):
 
 
 class BundleOfJoy(STS2Card):
-    """기쁨 꾸러미 — Colorless 3장 (업글 4장) 손패 생성, 소모.
-    [Colorless 미이식 — 생성 생략]"""
+    """기쁨 꾸러미 — Colorless 카드풀에서 서로 다른 무작위 3장(업글 4장)을
+    손패에 생성, 소모."""
     card_id = "bundle_of_joy"
     name = "Bundle of Joy"
     card_type = CardType.SKILL
@@ -1149,7 +1167,12 @@ class BundleOfJoy(STS2Card):
     exhausts = True
 
     def use(self, source, targets, combat=None) -> None:
-        pass  # Colorless 풀 미이식
+        if combat is None:
+            return
+        from sts2_sim.cards.colorless import _COLORLESS_GENERATABLE_IDS
+        n = min(4 if self.upgraded else 3, len(_COLORLESS_GENERATABLE_IDS))
+        for cid in combat.rng.sample(_COLORLESS_GENERATABLE_IDS, n):
+            combat.generate_card(cid, to="hand")
 
 
 class Comet(_Attack):
@@ -1319,13 +1342,25 @@ class HeavenlyDrill(STS2Card):
 
 
 class HeirloomHammer(_Attack):
-    """가보 망치 — 2코스트 20딜 (업글 25) + 손패 Colorless 1장 복제.
-    [Colorless 미이식 — 복제 대상 없음]"""
+    """가보 망치 — 2코스트 20딜 (업글 25) + 손패의 Colorless 카드 1장을 복제해
+    손패에 추가 (원본 CardSelectCmd.FromHand filter VisualCardPool.IsColorless).
+    [선택→무작위](대상 카드가 여럿이면 무작위 1장)."""
     card_id = "heirloom_hammer"
     name = "Heirloom Hammer"
     rarity = Rarity.RARE
     cost = 2
     dmg, dmg_up = 20, 25
+
+    def use(self, source, targets, combat=None) -> None:
+        super().use(source, targets, combat)
+        if combat is None:
+            return
+        from sts2_sim.cards.colorless import _COLORLESS_IDS
+        candidates = [c for c in combat.hand if c.card_id in _COLORLESS_IDS]
+        if not candidates:
+            return
+        chosen = combat.rng.choice(candidates)
+        combat.generate_card(chosen.card_id, upgraded=chosen.upgraded, to="hand")
 
 
 class IAmInvincible(_Block):

@@ -10,11 +10,11 @@
 | 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
 | 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 435종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82종 완전 이식** + 스타터/상태이상/토큰 (STS2 전체 593종 중) |
-| 파워 | 145종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 카드 | 500종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상/토큰 (STS2 전체 593종 중) |
+| 파워 | 161종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 12개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 13개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -36,7 +36,8 @@ sts2_sim/
 │  ├─ silent.py          # Phase 6c: Silent 풀 80종 (C19/U34/R25/Ancient2)
 │  ├─ defect.py          # Phase 6d: Defect 풀 83종 (C20/U35/R25/Ancient2/Token1)
 │  ├─ necrobinder.py     # Phase 6e: Necrobinder 풀 84종 (C20/U35/R25/Ancient2/Token2)
-│  └─ regent.py          # Phase 6f: Regent 풀 87종 (C20/U35/R25/Ancient2/Token5)
+│  ├─ regent.py          # Phase 6f: Regent 풀 87종 (C20/U35/R25/Ancient2/Token5)
+│  └─ colorless.py       # Phase 6g: Colorless 풀 65종 (U40/R25, Common 없음)
 └─ core/
    ├─ combat.py          # 턴 루프 + SimplePolicy
    ├─ policy.py          # GreedyPolicy (인텐트 인지)
@@ -246,9 +247,9 @@ SovereignBlade/MinionStrike/MinionDiveBomb/MinionSacrifice/Debris 토큰.
 - **단순화 표기:** 카드 선택 UI(Begone/Charge/Guards/CosmicIndifference/Glimmer/
   PhotonCut/ForegoneConclusion/DecisionsDecisions/Tyranny)는 무작위 선택
   `[선택→무작위]` (단, Charge는 서로 다른 카드 2장을 보장하도록 비복원 추출).
-  Colorless 카드 풀은 미이식 — Quasar/BundleOfJoy/ManifestAuthority(생성)/
-  SpectrumShift(파워)/HeirloomHammer(복제)는 생성 로직 생략(마커,
-  `[Colorless 미이식]`)
+  Quasar/BundleOfJoy/ManifestAuthority(생성)/SpectrumShift(파워)/HeirloomHammer(복제)의
+  Colorless 카드 풀 참조는 Phase 6g에서 `sts2_sim.cards.colorless`로 배선 완료
+  (아래 Colorless 섹션 참조)
 - **적대 검증(8배치 대조, 87카드):** 발견·수정 5건 — Charge 무작위 선택 시
   동일 카드 중복 선택(서로 다른 2장 보장으로 수정), Glitterstream 이월 블록이
   시전 시점 블록 수정자(Frail 등) 미반영, DecisionsDecisions 자동 재생 루프가
@@ -261,6 +262,72 @@ SovereignBlade/MinionStrike/MinionDiveBomb/MinionSacrifice/Debris 토큰.
   `take_damage`/`gain_block`의 파워 순회 중 자기 제거(**Vigor**)로 인한
   `RuntimeError`도 함께 발견·수정(방어적 `list()` 순회)
 
+## 🎨 Colorless 카드 풀 (Phase 6g)
+
+디컴파일 `ColorlessCardPool` 65종 전량 이식 (Common 등급 없음 — Uncommon 40 /
+Rare 25, 원본부터 그러함) + 신규 파워 16종.
+
+- **신규 파워 16종:** AutomationP, BeaconOfHopeP, CalamityP, EntropyP, FastenP,
+  KnockdownP, MayhemP, NoBlockP, NostalgiaP, PanacheP, PrepTimeP, RollingBoulderP,
+  StratagemP, TagTeamP, TheBombP, TheGambitP
+- **"소유 캐릭터 카드풀" 참조 카드** (Calamity/Discovery/Entropy/Jackpot/
+  JackOfAllTrades/Splash): `player.character.name` → 캐릭터별 `*_POOL_BY_RARITY`로
+  해석하는 헬퍼(`_character_pool_ids`/`_character_attack_ids`/
+  `_character_zero_cost_ids`/`_other_character_attack_ids`) 신설. Regent의
+  Quasar/BundleOfJoy/ManifestAuthority/SpectrumShift/HeirloomHammer도 여기 배선
+- **멀티플레이 전용 카드 12종**(BeaconOfHope/BelieveInYou/Coordinate/GangUp/
+  HuddleUp/Intercept/Knockdown/Lift/Mimic/Rally/TagTeam/TheBall)은 원본 목록에
+  그대로 포함하되 "다른 플레이어/팀원" 대상 효과만 싱글플레이에 맞게 단순화
+  (대상=자기 자신, 또는 발동 조건상 자기 외 대상이 없어 항상 무발동)
+- **전투 엔진 확장:** `cards_played_this_combat`(GoldAxe), `_reshuffle`
+  (Stratagem — 셔플 후 `after_shuffle` 파워 훅 발동), `auto_play_from_draw_pile`
+  (Mayhem), `on_before_hand_draw` 카드 훅(Bolas/ThrummingHatchet 부메랑),
+  `on_pre_play_phase` 파워 훅(Mayhem), `settle_to == "draw_random"`(TheBall),
+  `_settle_override`/`modify_settle_pile` 파워 훅(Nostalgia — 소모 대신 뽑을 더미
+  맨 위로)
+- **적대 검증(8배치 대조, 65카드+16파워+엔진 확장분):** 확정 8건 수정 —
+  - DarkShackles가 부여하는 TempStrength(음수)가 정적 `is_debuff=False`로
+    선언되어 있어 Artifact가 무효화하지 못함 → `is_debuff`를 `amount < 0` 기준
+    동적 property로 변경(원본 `TemporaryStrengthPower.Type`이 `IsPositive`에
+    따라 Buff/Debuff가 갈리는 것과 대응). Coordinate(양수 적용)는 그대로 Buff 유지
+  - Discovery/Calamity/Entropy/Splash가 참조하는 캐릭터 카드풀 헬퍼가 원본
+    `CardFactory.FilterForCombat`의 `CanBeGeneratedInCombat` 체크를 하지 않아
+    Feed/NotYet/TheHunt/Royalties/Nightmare/Transfigure(캐릭터 풀)와
+    HandOfGreed/HiddenGem(Colorless 자체 풀)까지 생성 후보에 포함될 수 있었음
+    → `_NOT_GENERATABLE_IN_COMBAT` 제외 목록 신설, 캐릭터 풀 헬퍼 전체 및
+    Quasar/BundleOfJoy/SpectrumShift/JackOfAllTrades가 쓰는
+    `_COLORLESS_GENERATABLE_IDS`에도 동일 적용
+  - HiddenGem 폴백(타입 필터 결과가 비었을 때) 후보 선정에서 "재생 미보유"
+    조건이 타입 필터와 함께 사라져 이미 Replay가 걸린 카드에 다시 적용될 수
+    있었음 → 재생 미보유 필터와 타입 필터를 2단계로 분리해 폴백에서도 재생
+    미보유 조건 유지
+  - Entropy가 변환 대상 카드의 강화 상태를 대체 카드에 강제로 이전(원본
+    Transform 파이프라인은 업그레이드 상태를 전혀 전달하지 않음) → 제거
+  - 전부 원본 대조 후 수정 및 회귀 테스트 추가 (`test_sts2_phase6g.py`)
+- **기지 차이로 문서화(수정 보류 — 아키텍처 변경 필요, ROADMAP.md Phase 6g+ 참조):**
+  - **NoBlockPower**: 원본은 `cardSource == null`이면 배율 1(면제)을 반환해
+    "카드 유래 블록"만 차단하지만(Metallicize/오브/렐릭성 블록은 면제), 이
+    구현의 `gain_block`/`compute_modified_block` 파이프라인에는 카드 출처 인자가
+    없어 `NoBlockP`가 모든 파워드 블록을 무조건 차단
+  - **TheGambitPower**: 원본은 `IsPoweredAttack()`(Move && !Unpowered)만
+    즉사를 트리거해 Thorns/FlameBarrier의 Unpowered 반사 피해는 면제되지만,
+    `take_damage`/`on_take_damage`에 파워드/언파워드 구분이 없어 `TheGambitP`가
+    반사 피해에도 반응
+  - **`PowerInstanceType.Instanced`**(TheBomb/RollingBoulder/Automation/
+    Panache 등): 원본은 재적용 시 기존 인스턴스에 병합하지 않고 독립된 새
+    인스턴스를 추가하지만, `Creature._powers`가 power_id당 단일 인스턴스만
+    보관하는 구조라 `STS2Power.apply()`의 기본 병합 로직이 그대로 적용됨
+    (최소 TheBomb·RollingBoulder는 2장 이상 플레이 시 실제 피해량/타이밍이
+    원본과 달라짐)
+  - **Entropy 대체 카드 풀**: 원본은 변환 대상 "카드 자신이 속한 풀"(Colorless
+    카드라면 ColorlessCardPool)에서 대체 카드를 뽑지만, 카드별 소속 풀 조회
+    인프라가 없어 항상 "소유 캐릭터 풀"에서 뽑음 — 손패에 소유 캐릭터 외
+    카드(Colorless 등)가 섞였을 때만 관측 가능한 차이
+- **오탐 판정 1건:** JackOfAllTrades가 MultiplayerOnly 카드 12종을 생성 후보에서
+  제외하지 않는 것은 이 프로젝트가 `CardMultiplayerConstraint` 개념 자체를
+  구현하지 않기로 한 전역 결정(Phase 6f부터 문서화)의 직접적 귀결 — 별도 버그
+  아님
+
 ## 🔬 생성 방법론 (Phase 6a)
 
 몬스터 17종은 멀티에이전트 파이프라인으로 이식:
@@ -271,5 +338,7 @@ SovereignBlade/MinionStrike/MinionDiveBomb/MinionSacrifice/Debris 토큰.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6g+ 참조 — Colorless 카드 풀, 몬스터 잔여 ~87종, 렐릭/포션 풀,
-미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension, 실제 맵 그래프.
+ROADMAP.md의 Phase 6g+ 참조 — 엔진 아키텍처 확장(카드 출처 블록 파이프라인/
+파워드-언파워드 피해 구분/Instanced 파워 다중 인스턴스), 몬스터 잔여 ~87종,
+렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension,
+실제 맵 그래프.

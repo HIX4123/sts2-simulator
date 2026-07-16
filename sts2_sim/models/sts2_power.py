@@ -490,12 +490,19 @@ class Vigor(STS2Power):
 
 
 class TempStrength(STS2Power):
-    """임시 힘 (TemporaryStrengthPower) — 이번 턴만 힘 ±amount (SetupStrike/Mangle).
-    음수 가능. 소유자 턴 종료 tick에서 제거."""
+    """임시 힘 (TemporaryStrengthPower) — 이번 턴만 힘 ±amount (SetupStrike/Mangle/DarkShackles).
+    음수 가능. 소유자 턴 종료 tick에서 제거.
+    원본 TemporaryStrengthPower.Type은 IsPositive에 따라 Buff/Debuff가 정적으로 갈리며
+    (DarkShacklesPower.IsPositive=false → Debuff), 이는 적용값 amount의 부호와 그대로 대응된다
+    (음수 적용=Debuff=Artifact가 무효화 가능, 양수 적용=Buff). 따라서 is_debuff를 amount<0 기준
+    동적 property로 판정한다."""
     power_id = "temp_strength"
     name = "Temporary Strength"
-    is_debuff = False
     damage_side = "outgoing"
+
+    @property
+    def is_debuff(self) -> bool:
+        return self.amount < 0
 
     def modify_damage(self, amount: int, is_attack: bool = True) -> int:
         if is_attack:
@@ -2074,12 +2081,19 @@ class ForegoneConclusionP(STS2Power):
 
 
 class SpectrumShiftP(STS2Power):
-    """스펙트럼 변이 — 매 턴 드로우 전에 무작위 Colorless 카드 amount장을
-    손패에 생성 (원본 SpectrumShiftPower).
-    Colorless 풀 미이식 — 전투 내 효과 없음(마커, 문서화)."""
+    """스펙트럼 변이 — 매 턴 드로우 전 Colorless 카드풀에서 서로 다른 무작위
+    amount장을 손패에 생성 (원본 SpectrumShiftPower.BeforeHandDraw — GetDistinctForCombat)."""
     power_id = "spectrum_shift"
     name = "Spectrum Shift"
     is_debuff = False
+
+    def before_hand_draw(self, combat) -> None:
+        from sts2_sim.cards.colorless import _COLORLESS_GENERATABLE_IDS
+        n = min(self.amount, len(_COLORLESS_GENERATABLE_IDS))
+        if n <= 0:
+            return
+        for cid in combat.rng.sample(_COLORLESS_GENERATABLE_IDS, n):
+            combat.generate_card(cid, to="hand")
 
 
 class TyrannyP(STS2Power):
@@ -2229,6 +2243,276 @@ class FurnaceP(STS2Power):
         if combat is not None:
             from sts2_sim.cards.regent import _forge
             _forge(self.owner, combat, self.amount)
+
+
+# ══════════════════════════════════════════
+# Colorless 카드 파워 (Phase 6g)
+# DarkShackles/Coordinate는 신규 파워 없이 기존 TempStrength(±amount) 재사용
+# (원본 TemporaryStrengthPower — Sign×amount 힘, 대상 측 턴 종료 시 회수).
+# ══════════════════════════════════════════
+
+class AutomationP(STS2Power):
+    """오토메이션 — 카드를 10장 뽑을 때마다 에너지 +amount, 카운터 리셋
+    (원본 AutomationPower — BaseCards=10 고정)."""
+    power_id = "automation"
+    name = "Automation"
+    is_debuff = False
+    THRESHOLD = 10
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.cards_left = self.THRESHOLD
+
+    def on_card_drawn(self, card, combat) -> None:
+        self.cards_left -= 1
+        if self.cards_left <= 0:
+            if self.owner is not None:
+                self.owner.gain_energy(self.amount)
+            self.cards_left = self.THRESHOLD
+
+
+class BeaconOfHopeP(STS2Power):
+    """받은 축복 — 블록 획득 시 50%를 팀원에게 분배 (원본 BeaconOfHopePower,
+    MultiplayerOnly 카드). 싱글플레이는 팀원이 없어 항상 무발동(마커)."""
+    power_id = "beacon_of_hope"
+    name = "Beacon of Hope"
+    is_debuff = False
+
+
+class CalamityP(STS2Power):
+    """대재앙 — 소유 공격 카드를 플레이할 때마다, 발동 후 소유 캐릭터 카드풀에서
+    무작위 공격 카드 amount장을 손패에 생성 (원본 CalamityPower — Before/AfterCardPlayed.
+    이 프로젝트는 카드 플레이가 동기적이라 Before 시점 스냅샷 없이 즉시 처리)."""
+    power_id = "calamity"
+    name = "Calamity"
+    is_debuff = False
+
+    def on_card_played(self, card, combat) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type != CardType.ATTACK or self.owner is None:
+            return
+        from sts2_sim.cards.colorless import _character_attack_ids
+        pool = _character_attack_ids(self.owner)
+        if not pool:
+            return
+        for _ in range(self.amount):
+            combat.generate_card(combat.rng.choice(pool), to="hand")
+
+
+class EntropyP(STS2Power):
+    """엔트로피 — 내 턴 시작마다 손패 무작위 amount장을 소유 캐릭터 카드풀의
+    다른 무작위 카드로 변환 (원본 EntropyPower — CardSelectCmd 선택을 무작위로 대체,
+    [선택→무작위]).
+    [기지 차이] 원본은 변환 대상 카드 '자신이 속한 CardModel.Pool'(Colorless 카드라면
+    ColorlessCardPool)에서 대체 카드를 뽑고 같은 희귀도로 제한하지만(GetFilteredTransformationOptions),
+    이 구현은 항상 '소유 캐릭터 카드풀'에서 희귀도 제한 없이 뽑는다 — 손패에 소유 캐릭터 외
+    카드(Colorless 등)가 섞여 있을 때만 관측 가능한 차이이며, 카드별 소속 풀 조회 인프라가
+    없어 단순화했다."""
+    power_id = "entropy"
+    name = "Entropy"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is None or not combat.hand:
+            return
+        from sts2_sim.models.sts2_card import CardType, create_card
+        from sts2_sim.cards.colorless import _character_pool_ids
+        candidates = [c for c in combat.hand
+                      if c.card_type in (CardType.ATTACK, CardType.SKILL, CardType.POWER)]
+        combat.rng.shuffle(candidates)
+        for card in candidates[:self.amount]:
+            pool = [cid for cid in _character_pool_ids(self.owner) if cid != card.card_id]
+            if not pool:
+                continue
+            # 원본 Transform 파이프라인(CardFactory.CreateRandomCardForTransform)은
+            # 업그레이드 상태를 전혀 전달하지 않는다 — 대체 카드는 항상 비강화로 생성.
+            new_card = create_card(combat.rng.choice(pool))
+            idx = combat.hand.index(card)
+            combat.hand[idx] = new_card
+
+
+class FastenP(STS2Power):
+    """고정 — Defend 태그 카드가 블록을 얻을 때 +amount 고정 가산 (원본 FastenPower).
+    이 프로젝트는 카드별 블록 파이프라인이 없어 Defend/UltimateDefend가 직접
+    이 파워 수치를 조회해 가산 (마커)."""
+    power_id = "fasten"
+    name = "Fasten"
+    is_debuff = False
+
+
+class KnockdownP(STS2Power):
+    """넘어뜨림 — 시전자 외의 공격자로부터 받는 파워드 공격 피해 ×amount
+    (원본 KnockdownPower, MultiplayerOnly 카드). 싱글플레이는 시전자 외
+    공격자가 없어 항상 무발동(마커). 적 자신의 턴 종료 시 제거."""
+    power_id = "knockdown"
+    name = "Knockdown"
+    is_debuff = True
+
+    def on_turn_end(self) -> None:
+        self.remove()
+
+
+class MayhemP(STS2Power):
+    """혼돈 — 매 내 턴 카드 플레이 시작 전, 뽑을 더미 맨 위 amount장을 자동 플레이
+    (원본 MayhemPower — AfterAutoPrePlayPhaseEntered)."""
+    power_id = "mayhem"
+    name = "Mayhem"
+    is_debuff = False
+
+    def on_pre_play_phase(self, combat) -> None:
+        combat.auto_play_from_draw_pile(self.amount)
+
+
+class NoBlockP(STS2Power):
+    """무방비 — 파워드 블록 획득을 완전히 차단 (원본 NoBlockPower — PanicButton).
+    Unpowered 블록(파워가 `_block`에 직접 가산하는 경로)은 이 파이프라인을
+    거치지 않아 그대로 적용됨. 적 턴 종료마다 1 감소."""
+    power_id = "no_block"
+    name = "No Block"
+    is_debuff = True
+
+    def modify_block(self, amount: int) -> int:
+        return 0
+
+    def on_enemy_turn_end(self) -> None:
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class NostalgiaP(STS2Power):
+    """향수 — 이번 턴 첫 amount장의 공격/스킬 카드는 버림 대신 뽑을 더미 맨 위로
+    (원본 NostalgiaPower — ModifyCardPlayResultPileTypeAndPosition. 카운트는
+    combat의 턴 내 누적 공격+스킬 플레이 수를 그대로 사용, 이번 플레이 포함)."""
+    power_id = "nostalgia"
+    name = "Nostalgia"
+    is_debuff = False
+
+    def modify_settle_pile(self, card, combat) -> Optional[str]:
+        count = combat.attacks_played_this_turn + combat.skills_played_this_turn
+        if count <= self.amount:
+            return "draw_top"
+        return None
+
+
+class PanacheP(STS2Power):
+    """패기 — 5장째 카드를 플레이할 때마다(2번째 플레이부터 집계) 모든 적에게
+    Unpowered amount 피해, 카운터 리셋. 내 턴 종료마다도 리셋 (원본 PanachePower)."""
+    power_id = "panache"
+    name = "Panache"
+    is_debuff = False
+    CARDS_LEFT_START = 5
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.cards_left = self.CARDS_LEFT_START
+        self._already_applied = False
+
+    def on_card_played(self, card, combat) -> None:
+        if self._already_applied:
+            self.cards_left -= 1
+            if self.cards_left <= 0:
+                for enemy in list(combat.alive_enemies):
+                    _unpowered_hit(enemy, self.amount)
+                self.cards_left = self.CARDS_LEFT_START
+        self._already_applied = True
+
+    def on_turn_end(self) -> None:
+        self.cards_left = self.CARDS_LEFT_START
+
+
+class PrepTimeP(STS2Power):
+    """준비 시간 — 내 턴 시작마다 Vigor +amount (원본 PrepTimePower)."""
+    power_id = "prep_time"
+    name = "Prep Time"
+    is_debuff = False
+
+    def on_turn_start(self) -> None:
+        if self.owner is not None:
+            self.owner.apply_power(Vigor(self.amount))
+
+
+class RollingBoulderP(STS2Power):
+    """구르는 바위 — 내 턴 시작마다 모든 적에게 Unpowered amount 피해,
+    이후 amount에 +5 누적 (원본 RollingBoulderPower — IncrementAmount=5 고정)."""
+    power_id = "rolling_boulder"
+    name = "Rolling Boulder"
+    is_debuff = False
+    INCREMENT = 5
+
+    def on_turn_start(self) -> None:
+        combat = getattr(self.owner, "combat", None)
+        if combat is None:
+            return
+        for enemy in list(combat.alive_enemies):
+            _unpowered_hit(enemy, self.amount)
+        self.amount += self.INCREMENT
+
+
+class StratagemP(STS2Power):
+    """책략 — 버림 더미가 뽑을 더미로 셔플될 때마다 무작위 amount장을 손패로
+    (원본 StratagemPower — AfterShuffle. [선택→무작위])."""
+    power_id = "stratagem"
+    name = "Stratagem"
+    is_debuff = False
+
+    def after_shuffle(self, combat) -> None:
+        moved = 0
+        while moved < self.amount and combat.draw_pile and len(combat.hand) < 10:
+            card = combat.rng.choice(combat.draw_pile)
+            combat.draw_pile.remove(card)
+            combat.hand.append(card)
+            moved += 1
+
+
+class TagTeamP(STS2Power):
+    """태그 팀 — 다른 플레이어가 이 적을 공격하면 재생 횟수 +amount (원본
+    TagTeamPower, MultiplayerOnly 카드, 시전자 자신의 공격은 제외). 싱글플레이는
+    다른 공격자가 없어 항상 무발동(마커)."""
+    power_id = "tag_team"
+    name = "Tag Team"
+    is_debuff = True
+
+
+class TheBombP(STS2Power):
+    """폭탄 — amount턴 후(내 턴 종료마다 1 감소) 모든 적에게 Unpowered 피해
+    (원본 TheBombPower — 데미지는 SetDamage로 별도 지정)."""
+    power_id = "the_bomb"
+    name = "The Bomb"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.damage = 40
+
+    def set_damage(self, damage: int) -> None:
+        self.damage = damage
+
+    def on_turn_end(self) -> None:
+        if self.amount > 1:
+            self.amount -= 1
+            return
+        combat = getattr(self.owner, "combat", None)
+        self.remove()
+        if combat is None:
+            return
+        for enemy in list(combat.alive_enemies):
+            _unpowered_hit(enemy, self.damage)
+
+
+class TheGambitP(STS2Power):
+    """도박 — 다음에 파워드 공격으로 비차단 피해를 받으면 즉사 (원본
+    TheGambitPower, StackType.Single). 자해(중독/화상 등)는 제외."""
+    power_id = "the_gambit"
+    name = "The Gambit"
+    is_debuff = True
+
+    def on_take_damage(self, attacker, hp_lost: int) -> None:
+        if attacker is not None and attacker is not self.owner and hp_lost > 0:
+            self.remove()
+            if self.owner is not None:
+                self.owner._current_hp = 0
 
 
 # ══════════════════════════════════════════
@@ -2385,6 +2669,23 @@ POWER_REGISTRY = {
     "sword_sage": SwordSageP,
     "void_form": VoidFormP,
     "furnace": FurnaceP,
+    # Colorless (Phase 6g)
+    "automation": AutomationP,
+    "beacon_of_hope": BeaconOfHopeP,
+    "calamity": CalamityP,
+    "entropy": EntropyP,
+    "fasten": FastenP,
+    "knockdown": KnockdownP,
+    "mayhem": MayhemP,
+    "no_block": NoBlockP,
+    "nostalgia": NostalgiaP,
+    "panache": PanacheP,
+    "prep_time": PrepTimeP,
+    "rolling_boulder": RollingBoulderP,
+    "stratagem": StratagemP,
+    "tag_team": TagTeamP,
+    "the_bomb": TheBombP,
+    "the_gambit": TheGambitP,
 }
 
 

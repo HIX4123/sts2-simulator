@@ -192,9 +192,12 @@ class Defend(STS2Card):
     card_type = CardType.SKILL
     rarity = Rarity.BASIC
     cost = 1
+    tags = frozenset({"defend"})  # Fasten(Colorless) 참조용 CardTag.Defend
 
     def use(self, source, targets, combat=None) -> None:
         block = 8 if self.upgraded else 5
+        if hasattr(source, "get_power_amount"):
+            block += source.get_power_amount("fasten")  # Fasten — Defend 태그 카드 가산
         source.gain_block(block)
 
 

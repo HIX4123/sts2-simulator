@@ -148,11 +148,61 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
   `take_damage`/`gain_block`의 파워 순회가 콜백 중 자기 제거(Vigor)로 인해
   `RuntimeError`를 일으키는 기존 버그도 함께 발견·수정(list() 방어 순회)
 
+## ✅ Phase 6g — Colorless 카드 풀 (완료)
+
+- [x] **Colorless 카드 풀 완전 이식**: `ColorlessCardPool` 65종 전량(Common 등급 없음
+  — Uncommon 40 / Rare 25, 원본 그대로) + 신규 파워 16종(Automation/BeaconOfHope/
+  Calamity/Entropy/Fasten/Knockdown/Mayhem/NoBlock/Nostalgia/Panache/PrepTime/
+  RollingBoulder/Stratagem/TagTeam/TheBomb/TheGambit)
+- [x] Regent 5개 카드/파워의 미이식 Colorless 생성 로직 배선 완료: Quasar(3장 중
+  1장 무작위)/BundleOfJoy(서로 다른 3장)/ManifestAuthority(7블록+1장)/
+  HeirloomHammer(손패 Colorless 카드 복제)/SpectrumShift(매 드로우 전 amount장 생성)
+- [x] "소유 캐릭터 카드풀" 참조 카드(Calamity/Discovery/Entropy/Jackpot/
+  JackOfAllTrades/Splash) — `player.character.name` → 캐릭터별 `*_POOL_BY_RARITY`
+  해석 헬퍼(`_character_pool_ids` 등) 신설
+- [x] 전투 엔진 확장: `_reshuffle`(Stratagem), `auto_play_from_draw_pile`(Mayhem),
+  `on_before_hand_draw` 카드 훅(Bolas/ThrummingHatchet 부메랑), `on_pre_play_phase`
+  파워 훅, `settle_to == "draw_random"`(TheBall), `_settle_override`/
+  `modify_settle_pile`(Nostalgia), `cards_played_this_combat`(GoldAxe)
+- [x] 멀티에이전트 적대 검증 (8배치로 65카드+16파워+전투엔진 확장분을 디컴파일 원본과 대조).
+  확정 8건 수정: DarkShackles가 부여하는 TempStrength(음수)가 항상 `is_debuff=False`로
+  취급되어 Artifact가 무효화하지 못함(→ `is_debuff`를 `amount<0` 동적 property로 변경,
+  Coordinate의 양수 케이스는 그대로 Buff 유지), Discovery/Calamity/Entropy/Splash가
+  참조하는 캐릭터 카드풀 헬퍼가 `CanBeGeneratedInCombat=false` 카드(Feed/NotYet/
+  TheHunt/Royalties/Nightmare/Transfigure/HandOfGreed/HiddenGem)를 걸러내지 않음
+  (→ `_NOT_GENERATABLE_IN_COMBAT` 제외 목록 신설, Quasar/BundleOfJoy/SpectrumShift/
+  JackOfAllTrades의 Colorless 생성 경로에도 동일 적용), HiddenGem 폴백 후보 선정 시
+  "재생 미보유" 조건이 타입 필터와 함께 사라져 이미 Replay가 걸린 카드에 중복 적용
+  가능(→ 2단계 필터로 분리), Entropy가 변환 대상 카드의 강화 상태를 대체 카드에
+  강제로 이전(원본 Transform 파이프라인은 업그레이드를 전달하지 않음 → 제거) —
+  전부 원본 대조 후 수정 및 회귀 테스트 추가
+- [x] **기지 차이로 문서화(수정 보류)**: NoBlockPower의 "카드 유래 블록만 차단"
+  (`cardSource == null` 예외 — Metallicize/오브/렐릭성 블록은 면제)은 `gain_block`/
+  `compute_modified_block` 파이프라인에 카드 출처 인자가 없어 미구현;
+  TheGambitPower의 "파워드 공격만 즉사 트리거"(`IsPoweredAttack()` — Thorns/
+  FlameBarrier 반사 피해는 Unpowered라 면제)는 `take_damage`에 파워드/언파워드
+  구분 인자가 없어 미구현; `PowerInstanceType.Instanced`(TheBomb/RollingBoulder/
+  Automation/Panache 등 — 재적용 시 병합이 아닌 독립 인스턴스 추가) 미구현
+  (`Creature._powers`가 power_id당 단일 인스턴스만 보관하는 구조적 한계);
+  Entropy의 대체 카드 풀이 "변환 대상 카드 자신의 소속 풀"이 아닌 "소유 캐릭터
+  풀"이라 손패에 Colorless 카드가 섞였을 때만 다르게 동작(카드별 소속 풀 조회
+  인프라 부재). 넷 다 5개 캐릭터 전투 엔진 전반에 걸친 아키텍처 변경이 필요해
+  이번 포팅 범위에서는 보류 — `IMPLEMENTATION_STATUS.md` 참조
+- [x] JackOfAllTrades가 MultiplayerOnly 카드 12종을 생성 후보에서 제외하지 않는
+  것은 검증에서 오탐(기지 단순화)으로 판정: 이 프로젝트는 CardMultiplayerConstraint
+  개념 자체를 구현하지 않기로 한 프로젝트 전역 결정(Phase 6f부터 문서화됨)의
+  직접적 귀결이며 JackOfAllTrades만의 누락이 아님
+
 ## 📋 Phase 6g+ — 남은 확대 (계획)
 
-- [ ] Colorless 카드 풀 (`Models.CardPools.ColorlessCardPool`) — Regent 5개 카드/파워가
-  참조하는 미이식 생성 로직(Quasar/BundleOfJoy/ManifestAuthority/SpectrumShift/
-  HeirloomHammer) 포함
+- [ ] **엔진 아키텍처 확장 (Phase 6g 검증에서 발견, 후속 작업으로 분리)**:
+  (1) `gain_block`/`compute_modified_block`에 카드 출처(card_source) 인자 추가 —
+  NoBlockPower가 카드 유래 블록만 차단하도록, (2) `take_damage`/`on_take_damage`에
+  파워드/언파워드 구분 인자 추가 — TheGambitPower가 Thorns/FlameBarrier 반사
+  피해를 무시하도록, (3) `Creature._powers`가 `PowerInstanceType.Instanced`
+  파워(TheBomb/RollingBoulder/Automation/Panache 등)에 대해 power_id당 다중
+  인스턴스를 보관하도록 — 세 항목 모두 5개 캐릭터 전투 엔진 전반에 영향을 주는
+  변경이라 별도 Phase로 분리
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
