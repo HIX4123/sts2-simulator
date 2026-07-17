@@ -242,20 +242,29 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
 - [x] 회귀 테스트 8종 추가(`test_sts2_phase6g.py`), 13스위트 전체 + 5캐릭터
   20시드 stats 회귀 확인 — 모든 수치 Phase 6h 기준과 완전 동일(그리디 정책이
   해당 엣지 케이스 조합에 도달하지 않음)
+- [x] **후속: Vulnerable/Colossus/Cruelty/Conqueror `IsPoweredAttack()` 게이트**
+  (위 검증에서 발견, 같은 회차에 마저 구현):
+  - `Vulnerable.modify_incoming`/`Colossus.modify_incoming`/`ConquerorP.modify_incoming`에
+    `powered` 게이트 추가 — Unpowered 반사·자해 피해에는 적용 안 됨
+  - **Strength/Weak(가해 측)는 수정 불필요로 확인 종결**: `compute_attack_damage`는
+    카드 공격(`_deal_attack`)과 몬스터 자체 공격에서만 호출되고, Thorns/FlameBarrier
+    등 Unpowered 반사 피해는 전부 그 파이프라인을 우회해 `take_damage`를 직접
+    호출하므로 애초에 Strength/Weak가 적용될 경로가 없음 — 그대로 둠
+  - **Cruelty 증폭 파이프라인 재구성**: `take_damage`의 Cruelty 증폭이 incoming
+    루프 종료 후 `pre_incoming`(수정 전 원본값) 기준으로 별도 가산되어 Intangible의
+    피해 상한(Cap)을 우회하는 버그를 발견·수정. 원본 `Hook.ModifyDamageInternal`이
+    Additive→Multiplicative→Cap 3단계를 엄격히 분리하고(`decompiled/
+    MegaCrit.Sts2.Core.Hooks/Hook.cs`) Cap은 항상 최종 단계에 적용됨을 확인 →
+    Cruelty/Debilitate 증폭을 `Vulnerable.modify_incoming` 자체의 배율 계산에
+    접어넣고(원본과 동일 순서: base→Cruelty→Debilitate), `Creature.take_damage`의
+    incoming 파이프라인을 Multiplicative 패스(`modify_incoming`) → Cap 패스
+    (`modify_damage_cap`, `Intangible`가 구현)로 분리 — 파워 적용 순서(딕셔너리
+    삽입 순서)와 무관하게 항상 정확한 결과가 나오도록 구조 수정
+  - 회귀 테스트 4종 추가, 13스위트 + 5캐릭터 stats 재확인 — 이번에도 완전 동일
+    (Intangible+Vulnerable+Cruelty 동시 보유는 그리디 정책이 도달하지 않는 조합)
 
 ## 📋 Phase 6g+ — 남은 확대 (계획)
 
-- [ ] **Strength/Weak/Vulnerable IsPoweredAttack() 게이트 (Phase 6i 중 발견)**:
-  원본 `StrengthPower.ModifyDamageAdditive`/`WeakPower`/`VulnerablePower`.
-  ModifyDamageMultiplicative 전부 `props.IsPoweredAttack()`(Move && !Unpowered)
-  게이트가 있어 Thorns/FlameBarrier/Outbreak/Burn/NecroMastery/SleightOfFlesh 등
-  Unpowered 피해에는 적용되지 않지만, 현재 구현은 무조건 적용됨. Vulnerable(수신
-  측)이 실질적 노출 — Phase 6i에서 Unpowered로 분류해 `take_damage`에 흘려보낸
-  반사·자해 피해들이 전부 영향권. Strength/Weak(가해 측, `compute_attack_damage`)는
-  Unpowered 공격이 애초에 그 파이프라인을 안 타는지 먼저 확인 필요. `take_damage`의
-  `powered` 인자를 incoming 파이프라인까지 마저 흘려보내는 배선 + 각 파워 게이트
-  추가. 별도 검증 필요(승률/평균 층 등 핵심 수치에 실제 영향을 줄 수 있음 — Phase
-  6i 블록 파이프라인 수정과 달리 stats 회귀가 예상됨)
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등

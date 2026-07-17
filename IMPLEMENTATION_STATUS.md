@@ -309,17 +309,12 @@ Rare 25, 원본부터 그러함) + 신규 파워 16종.
     카드라면 ColorlessCardPool)에서 대체 카드를 뽑지만, 카드별 소속 풀 조회
     인프라가 없어 항상 "소유 캐릭터 풀"에서 뽑음 — 손패에 소유 캐릭터 외
     카드(Colorless 등)가 섞였을 때만 관측 가능한 차이
-  - **Strength/Weak/Vulnerable IsPoweredAttack() 게이트**: 원본은 셋 다
-    `props.IsPoweredAttack()`(Move && !Unpowered) 게이트가 있어 Unpowered
-    반사·자해 피해(Thorns/FlameBarrier/Outbreak/Burn/NecroMastery/
-    SleightOfFlesh 등)에는 적용되지 않지만, 현재 구현은 무조건 적용됨.
-    Phase 6i에서 발견 — 다음 작업 단위로 예정(ROADMAP.md 참조)
 - **오탐 판정 1건:** JackOfAllTrades가 MultiplayerOnly 카드 12종을 생성 후보에서
   제외하지 않는 것은 이 프로젝트가 `CardMultiplayerConstraint` 개념 자체를
   구현하지 않기로 한 전역 결정(Phase 6f부터 문서화)의 직접적 귀결 — 별도 버그
   아님
 
-## 🔧 Phase 6i — 엔진 아키텍처 확장
+## ✅ Phase 6i — 엔진 아키텍처 확장
 
 Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase. 5개 캐릭터 전투
 엔진 전반에 영향을 주는 변경이라 별도로 분리해 진행:
@@ -348,6 +343,29 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
 - 회귀 테스트 8종(`test_sts2_phase6g.py`), 13스위트 + 5캐릭터 20시드 stats 전부
   Phase 6h 기준과 완전 동일 (그리디 정책이 해당 엣지 케이스에 도달하지 않음 —
   스택 조합이 실제 플레이에서 드묾)
+- **후속: Vulnerable/Colossus/Cruelty/Conqueror `IsPoweredAttack()` 게이트**
+  (위 검증 완료 후 같은 회차에 마저 구현, 별도 적대적 검증 1건 추가 실행):
+  - `Vulnerable`/`Colossus`/`ConquerorP`의 `modify_incoming`에 `powered` 게이트
+    추가 — Unpowered 반사·자해 피해(Thorns/FlameBarrier/Outbreak/Burn/
+    NecroMastery/SleightOfFlesh 등)에는 배율 미적용
+  - **Strength/Weak(가해 측)는 수정 불필요로 확인 종결**: `compute_attack_damage`
+    호출부를 전수 조사한 결과 카드 공격/몬스터 자체 공격만 그 경로를 타고,
+    Unpowered 반사 피해는 전부 `take_damage`를 직접 호출해 그 파이프라인을
+    우회하므로 애초에 영향이 없음이 확인됨 (앞서 "stats 회귀 가능성" 예측은
+    실측 결과 틀림 — 실제로는 20/100시드 모두 완전 동일)
+  - **적대적 검증에서 발견한 추가 버그**: `take_damage`의 Cruelty 취약 배율
+    증폭이 incoming 수정 루프 종료 후 `pre_incoming`(원본값) 기준으로 별도
+    가산되어, 같은 피격에 Intangible의 피해 상한(1로 고정)이 걸려 있어도
+    이를 우회하는 문제. 원본 `Hook.ModifyDamageInternal`
+    (`decompiled/MegaCrit.Sts2.Core.Hooks/Hook.cs`)이 Additive→Multiplicative→
+    Cap 3단계를 엄격히 분리하고 Cap을 항상 최종 적용함을 확인 → Cruelty/
+    Debilitate 증폭을 `Vulnerable.modify_incoming` 자체의 배율 계산에 원본과
+    동일한 순서(base→Cruelty→Debilitate)로 접어넣고, `Creature.take_damage`의
+    incoming 파이프라인을 Multiplicative 패스(`modify_incoming`)와 Cap 패스
+    (`modify_damage_cap`, `Intangible`가 구현)로 분리 — 파워 적용 순서(딕셔너리
+    삽입 순서)와 무관하게 정확한 결과가 나오도록 구조 수정
+  - 회귀 테스트 4종 추가, 13스위트 + 5캐릭터 stats 재확인(20/100시드) — 전부
+    기존 수치와 완전 동일
 
 ## 🔬 생성 방법론 (Phase 6a)
 
@@ -359,7 +377,6 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6g+ 참조 — Strength/Weak/Vulnerable IsPoweredAttack() 게이트
-(Phase 6i 중 발견, stats 회귀 가능성 있어 별도 검증 필요), 몬스터 잔여 ~87종,
+ROADMAP.md의 Phase 6g+ 참조 — 몬스터 잔여 ~87종,
 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension,
 실제 맵 그래프.

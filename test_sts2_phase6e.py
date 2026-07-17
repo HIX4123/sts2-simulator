@@ -263,11 +263,11 @@ def test_debilitate_multiplier():
     enemy = _enemy(combat)
     enemy.apply_power(Vulnerable(3), applier=player)
     # 일반 취약: 10 × 1.5 = 15
-    dmg_normal = enemy._powers["vulnerable"].modify_damage(10)
+    dmg_normal = enemy._powers["vulnerable"].modify_incoming(10, player)
     assert dmg_normal == 15, dmg_normal
     enemy.apply_power(__import__("sts2_sim.models.sts2_power", fromlist=["Debilitate"]).Debilitate(2), applier=player)
     # Debilitate: 10 × 2.0 = 20
-    dmg_deb = enemy._powers["vulnerable"].modify_damage(10)
+    dmg_deb = enemy._powers["vulnerable"].modify_incoming(10, player)
     assert dmg_deb == 20, dmg_deb
     print("✅ Debilitate: 취약 배수 1.5 → 2.0 (10→15 vs 10→20)")
 

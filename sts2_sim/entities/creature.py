@@ -115,7 +115,8 @@ class Creature:
 
     def take_damage(self, amount: int, source: Optional[object] = None,
                      powered: bool = True) -> Dict[str, Any]:
-        """피격 처리: 수신 측 수정(Vulnerable/Colossus/Cruelty) → 블록 → HP → 피격 트리거.
+        """피격 처리: 수신 측 수정(Vulnerable/Colossus 등 배율 → Intangible 등 상한)
+        → 블록 → HP → 피격 트리거.
         powered=False — 원본 ValueProp.Unpowered(오브/파워 반응형 피해 전부 해당,
         Thorns/FlameBarrier 반격 포함): TheGambitPower의 IsPoweredAttack() 트리거
         조건에서 제외된다. 실제 공격 카드(_deal_attack)/몬스터 공격은 기본값(True)."""
@@ -125,21 +126,29 @@ class Creature:
         if (osty is not None and osty is not self and osty.is_alive
                 and source is not None and source is not self):
             return osty.take_damage(amount, source, powered)
-        pre_incoming = amount
+        # 원본 Hook.ModifyDamageInternal은 Multiplicative(Vulnerable/Colossus 등,
+        # 순서 무관 — 곱셈은 교환법칙 성립) → Cap(Intangible 등, 항상 최종 단계) 순서를
+        # 엄격히 분리한다. 두 파워 종류를 한 루프에서 순서대로 섞어 처리하면 Intangible이
+        # Vulnerable보다 먼저 적용(파워 딕셔너리 순서)됐을 때 상한이 배율보다 먼저
+        # 걸려버리는 오류가 생기므로 Multiplicative 파워를 전부 적용한 뒤 Cap을 마지막에
+        # 적용한다.
+        cap: Optional[int] = None
         for p in list(self._powers.values()):
-            if getattr(p, "damage_side", None) == "incoming":
-                modify_src = getattr(p, "modify_incoming", None)
-                if modify_src:
-                    amount = modify_src(amount, source)
-                else:
-                    amount = p.modify_damage(amount, is_attack=True)
-
-        # Cruelty — 공격자의 Cruelty가 취약 배율을 amount/100만큼 증폭 (1.5x → 1.75x 등)
-        if (source is not None and hasattr(source, "get_power_amount")
-                and self.get_power_amount("vulnerable") > 0):
-            cruelty = source.get_power_amount("cruelty")
-            if cruelty > 0:
-                amount += int(pre_incoming * cruelty / 100)
+            if getattr(p, "damage_side", None) != "incoming":
+                continue
+            modify_cap = getattr(p, "modify_damage_cap", None)
+            if modify_cap is not None:
+                c = modify_cap(amount, source, powered)
+                if c is not None and (cap is None or c < cap):
+                    cap = c
+                continue
+            modify_src = getattr(p, "modify_incoming", None)
+            if modify_src:
+                amount = modify_src(amount, source, powered)
+            else:
+                amount = p.modify_damage(amount, is_attack=True)
+        if cap is not None:
+            amount = min(amount, cap)
 
         if amount <= 0:
             return {"hp_lost": 0, "damage": 0, "killed": False}

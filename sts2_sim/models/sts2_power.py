@@ -88,7 +88,9 @@ class Dexterity(STS2Power):
 
 
 class Vulnerable(STS2Power):
-    """취약성 — 받는 데미지 1.5배."""
+    """취약성 — 받는 데미지 1.5배. Unpowered 피해(파워/오브 반응형 반사·자해 등)에는
+    적용되지 않음 (원본 VulnerablePower.ModifyDamageMultiplicative —
+    IsPoweredAttack() 게이트)."""
     power_id = "vulnerable"
     name = "Vulnerable"
     is_debuff = True
@@ -98,13 +100,20 @@ class Vulnerable(STS2Power):
         super().__init__(amount)
         self.duration = amount
 
-    def modify_damage(self, amount: int, is_attack: bool = True) -> int:
-        """받는 데미지 1.5배 (Debilitate 보유 시 2.0배)."""
-        if self.duration > 0:
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        """받는 데미지 1.5배 → 공격자 Cruelty로 추가 증폭 → 자신의 Debilitate로 추가
+        증폭 (원본 VulnerablePower.ModifyDamageMultiplicative가 반환하는 배율 자체에
+        Cruelty/Debilitate가 순서대로 접혀 들어가므로, Multiplicative 단계 내에서
+        한 번에 계산해야 Intangible 등 Cap 단계보다 먼저 적용됨)."""
+        if self.duration > 0 and powered:
             mult = 1.5
+            if source is not None and hasattr(source, "get_power_amount"):
+                cruelty = source.get_power_amount("cruelty")
+                if cruelty > 0:
+                    mult += cruelty / 100  # 원본 CrueltyPower.ModifyVulnerableMultiplier
             if (self.owner is not None and hasattr(self.owner, "get_power_amount")
                     and self.owner.get_power_amount("debilitate") > 0):
-                mult = mult + (mult - 1)  # 원본 DebilitatePower: 1.5 → 2.0
+                mult = mult + (mult - 1)  # 원본 DebilitatePower: amount + (amount-1)
             return int(amount * mult)
         return amount
 
@@ -537,14 +546,15 @@ class Aggression(STS2Power):
 
 
 class Colossus(STS2Power):
-    """거상 — 취약 상태인 공격자의 공격 데미지 절반. 적 턴 종료마다 1 감소."""
+    """거상 — 취약 상태인 공격자의 공격 데미지 절반. 적 턴 종료마다 1 감소.
+    Unpowered 피해에는 적용되지 않음 (원본 ColossusPower — IsPoweredAttack() 게이트)."""
     power_id = "colossus"
     name = "Colossus"
     is_debuff = False
     damage_side = "incoming"
 
-    def modify_incoming(self, amount: int, source) -> int:
-        if (source is not None and hasattr(source, "get_power_amount")
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        if (powered and source is not None and hasattr(source, "get_power_amount")
                 and source.get_power_amount("vulnerable") > 0):
             return amount // 2
         return amount
@@ -575,7 +585,7 @@ class CrimsonMantle(STS2Power):
 
 
 class Cruelty(STS2Power):
-    """잔혹함 — 취약 배율 +amount% (Creature.take_damage에서 공격자 측 검사)."""
+    """잔혹함 — 취약 배율 +amount% (Vulnerable.modify_incoming에서 공격자 측 검사)."""
     power_id = "cruelty"
     name = "Cruelty"
     is_debuff = False
@@ -1056,16 +1066,18 @@ class WraithFormPower(STS2Power):
 
 
 class Intangible(STS2Power):
-    """비실체 — 받는 피해를 1로 제한. 적 턴 종료마다 1 감소."""
+    """비실체 — 받는 피해를 1로 제한. 적 턴 종료마다 1 감소.
+    원본 IntangiblePower.ModifyDamageCap은 Multiplicative 단계(Vulnerable/Colossus
+    등 배율 전부 적용) 이후 Cap 단계에서 최종 적용되므로 modify_damage_cap으로
+    구현 — take_damage의 Cap 패스에서 배율과 무관하게 마지막에 1로 고정된다."""
     power_id = "intangible"
     name = "Intangible"
     is_debuff = False
     damage_side = "incoming"
 
-    def modify_incoming(self, amount: int, source) -> int:
-        if self.amount > 0 and amount > 1:
-            return 1
-        return amount
+    def modify_damage_cap(self, amount: int, source, powered: bool = True) -> Optional[int]:
+        # 원본 ModifyDamageCap은 IsPoweredAttack() 게이트 없이 무조건 1로 제한
+        return 1 if self.amount > 0 else None
 
     def on_enemy_turn_end(self) -> None:
         self.amount -= 1
@@ -1932,9 +1944,10 @@ class ConquerorP(STS2Power):
     is_debuff = True
     damage_side = "incoming"
 
-    def modify_incoming(self, amount: int, source) -> int:
-        # SovereignBlade 플레이 중에만 2배 (원본 cardSource is SovereignBlade)
-        if getattr(source, "_playing_sovereign_blade", False):
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        # SovereignBlade 플레이 중에만 2배 (원본 cardSource is SovereignBlade,
+        # IsPoweredAttack() 게이트도 있으나 SovereignBlade 공격은 항상 powered)
+        if powered and getattr(source, "_playing_sovereign_blade", False):
             return amount * 2
         return amount
 

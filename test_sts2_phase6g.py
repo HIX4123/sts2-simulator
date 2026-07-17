@@ -613,6 +613,76 @@ def test_sleight_of_flesh_reflect_respects_block():
     print("✅ SleightOfFlesh: 반사 피해 9가 블록 5에 흡수되어 HP 4만 손실")
 
 
+def test_vulnerable_ignores_unpowered_damage():
+    print("\n=== Vulnerable: Unpowered 피해(반사·자해)에는 배율 미적용 ===\n")
+    from sts2_sim.models.sts2_power import Vulnerable
+    combat, player, monsters = make_combat()  # big_dummy — HP 넉넉
+    enemy = monsters[0]
+    enemy.apply_power(Vulnerable(2))
+    hp0 = enemy.current_hp
+    enemy.take_damage(10, source=player, powered=False)  # Unpowered — 배율 미적용
+    assert hp0 - enemy.current_hp == 10, hp0 - enemy.current_hp
+    hp1 = enemy.current_hp
+    enemy.take_damage(10, source=player, powered=True)  # Powered — 1.5배
+    assert hp1 - enemy.current_hp == 15, hp1 - enemy.current_hp
+    print("✅ Vulnerable: Unpowered 피해 10 그대로, Powered 피해 10×1.5=15")
+
+
+def test_colossus_ignores_unpowered_damage():
+    print("\n=== Colossus: 취약 공격자의 Unpowered 피해에는 절반 배율 미적용 ===\n")
+    from sts2_sim.models.sts2_power import Colossus, Vulnerable
+    combat, player, monsters = make_combat(monster_ids=("stabbot",))
+    enemy = monsters[0]
+    player.apply_power(Colossus(1))
+    enemy.apply_power(Vulnerable(2))  # 공격자(enemy)가 취약 보유
+    hp0 = player.current_hp
+    player.take_damage(10, source=enemy, powered=False)  # Unpowered — Colossus 미적용
+    assert hp0 - player.current_hp == 10, hp0 - player.current_hp
+    hp1 = player.current_hp
+    player.take_damage(10, source=enemy, powered=True)  # Powered — 절반
+    assert hp1 - player.current_hp == 5, hp1 - player.current_hp
+    print("✅ Colossus: Unpowered 피해 10 그대로, Powered 피해 10→5(절반)")
+
+
+def test_cruelty_respects_powered_gate():
+    print("\n=== Cruelty: Unpowered 피해에는 취약 배율 증폭도 미적용 ===\n")
+    from sts2_sim.models.sts2_power import Vulnerable, Cruelty
+    combat, player, monsters = make_combat()  # big_dummy — HP 넉넉
+    enemy = monsters[0]
+    enemy.apply_power(Vulnerable(2))
+    player.apply_power(Cruelty(50))  # 취약 배율 +0.5 (Powered에만 증폭)
+    hp0 = enemy.current_hp
+    enemy.take_damage(10, source=player, powered=False)  # Unpowered — 둘 다 미적용
+    assert hp0 - enemy.current_hp == 10, hp0 - enemy.current_hp
+    hp1 = enemy.current_hp
+    enemy.take_damage(10, source=player, powered=True)  # Powered — (1.5+0.5)=2.0배
+    assert hp1 - enemy.current_hp == 20, hp1 - enemy.current_hp
+    print("✅ Cruelty: Unpowered 미적용, Powered 취약 배율 1.5→2.0 확인")
+
+
+def test_intangible_cap_applies_after_multiplicative():
+    print("\n=== Intangible: Vulnerable/Cruelty 배율과 무관하게 항상 1로 고정 "
+          "(파워 적용 순서 무관) ===\n")
+    from sts2_sim.models.sts2_power import Intangible, Vulnerable, Cruelty
+    combat, player, monsters = make_combat()  # big_dummy — HP 넉넉
+    dealer = player
+    dealer.apply_power(Cruelty(50))
+
+    target_a = monsters[0]
+    target_a.apply_power(Intangible(2))
+    target_a.apply_power(Vulnerable(3))
+    r_a = target_a.take_damage(20, source=dealer, powered=True)
+    assert r_a["hp_lost"] == 1, r_a  # Cap이 Multiplicative(1.5+0.5=2.0배)보다 나중에 적용
+
+    combat2, _, monsters2 = make_combat()
+    target_b = monsters2[0]
+    target_b.apply_power(Vulnerable(3))   # 순서를 바꿔도(Vulnerable 먼저) 결과는 동일
+    target_b.apply_power(Intangible(2))
+    r_b = target_b.take_damage(20, source=dealer, powered=True)
+    assert r_b["hp_lost"] == 1, r_b
+    print("✅ Intangible: 파워 적용 순서와 무관하게 Cap이 Multiplicative 이후 최종 적용 (1로 고정)")
+
+
 def test_regent_colorless_integration():
     print("\n=== Regent × Colorless 통합 (Quasar/BundleOfJoy/ManifestAuthority/"
           "HeirloomHammer/SpectrumShift) ===\n")
@@ -735,6 +805,10 @@ def main():
     test_frail_ignores_unpowered_block()
     test_unmovable_ignores_unpowered_block()
     test_sleight_of_flesh_reflect_respects_block()
+    test_vulnerable_ignores_unpowered_damage()
+    test_colossus_ignores_unpowered_damage()
+    test_cruelty_respects_powered_gate()
+    test_intangible_cap_applies_after_multiplicative()
     test_regent_colorless_integration()
     test_full_combats_all_cards()
     test_full_combats_all_characters_greedy()

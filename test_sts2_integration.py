@@ -35,7 +35,11 @@ class MockCreature:
         """데미지 처리."""
         # 파워 수정
         for power in self._powers.values():
-            amount = power.modify_damage(amount, is_attack=True)
+            modify_incoming = getattr(power, "modify_incoming", None)
+            if modify_incoming:
+                amount = modify_incoming(amount, source, True)
+            else:
+                amount = power.modify_damage(amount, is_attack=True)
 
         if amount <= 0:
             return {"hp_lost": 0}
@@ -107,7 +111,7 @@ def test_powers():
     # Vulnerable 파워
     vuln = Vulnerable(2)
     vuln.apply(enemy)
-    damage_modified = vuln.modify_damage(10, is_attack=True)
+    damage_modified = vuln.modify_incoming(10, None, powered=True)
     assert damage_modified == 15, f"Vulnerable 수정 실패: {damage_modified} != 15"
     print(f"✅ Vulnerable(2): 10 → {damage_modified} 데미지 (1.5배)")
 
