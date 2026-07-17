@@ -273,6 +273,43 @@ def test_the_bomb_explosion():
     print("✅ TheBomb: 3턴째에 40 피해 후 파워 제거")
 
 
+def test_rolling_boulder_instanced_stacking():
+    print("\n=== RollingBoulder: Instanced — 재적용 시 독립 인스턴스 추가 ===\n")
+    combat, player, _ = make_combat()
+    play(combat, "rolling_boulder")  # 1번째 인스턴스 (5)
+    play(combat, "rolling_boulder")  # 2번째 인스턴스 (5) — 병합되지 않고 독립 추가
+    power = player._powers["rolling_boulder"]
+    assert power._instances == [5, 5], power._instances
+    enemy = _enemy(combat)
+    h0 = enemy.current_hp
+    power.on_turn_start()  # 5+5=10 피해, 이후 각각 10으로 성장
+    assert h0 - enemy.current_hp == 10, h0 - enemy.current_hp
+    assert power._instances == [10, 10], power._instances
+    assert power.amount == 20, power.amount
+    h1 = enemy.current_hp
+    power.on_turn_start()  # 10+10=20 피해
+    assert h1 - enemy.current_hp == 20, h1 - enemy.current_hp
+    print("✅ RollingBoulder 2장: 병합 대신 독립 성장(5+5→10+10→20 피해)")
+
+
+def test_the_bomb_instanced_stacking():
+    print("\n=== TheBomb: Instanced — 재적용 시 독립 인스턴스 추가 ===\n")
+    combat, player, _ = make_combat()
+    play(combat, "the_bomb")  # 1번째 폭탄: 3턴, 40딜
+    play(combat, "the_bomb", upgraded=True)  # 2번째 폭탄(독립): 3턴, 50딜
+    power = player._powers["the_bomb"]
+    assert power._instances == [[3, 40], [3, 50]], power._instances
+    assert power.amount == 6, power.amount  # 두 인스턴스 턴수 합(get_power_amount 호환)
+    enemy = _enemy(combat)
+    power.on_turn_end()  # 둘 다 3→2
+    power.on_turn_end()  # 둘 다 2→1
+    h0 = enemy.current_hp
+    power.on_turn_end()  # 둘 다 1→0 → 각자 개별 폭발
+    assert h0 - enemy.current_hp == 90, h0 - enemy.current_hp  # 40+50, 소실 없음
+    assert "the_bomb" not in player._powers
+    print("✅ TheBomb 2장(비강화+강화): 3턴 후 각자 개별 폭발(40+50=90)")
+
+
 def test_panic_button_no_block():
     print("\n=== PanicButton: 큰 블록 + 2턴간 블록 차단 ===\n")
     combat, player, _ = make_combat()
@@ -292,6 +329,22 @@ def test_panic_button_no_block():
     print("✅ PanicButton: 블록 차단 2턴 후 해제")
 
 
+def test_panic_button_exempts_power_sourced_block():
+    print("\n=== PanicButton: 카드 유래 블록만 차단, 파워 유래 블록은 면제 ===\n")
+    from sts2_sim.models.sts2_power import Metallicize
+    combat, player, _ = make_combat()
+    play(combat, "panic_button")  # NoBlockP(2)
+    player.apply_power(Metallicize(5))
+    b0 = player.block
+    metallicize = player._powers["metallicize"]
+    metallicize.on_turn_end()  # 파워 유래 블록 — cardSource == null → 면제
+    assert player.block - b0 == 5, player.block - b0
+    b1 = player.block
+    play(combat, "defend")  # 카드 유래 블록 — 계속 차단
+    assert player.block == b1, player.block
+    print("✅ PanicButton 중 Metallicize(파워)는 블록 획득, Defend(카드)는 여전히 차단")
+
+
 def test_the_gambit_instakill():
     print("\n=== TheGambit: 다음 파워드 피격 시 즉사 ===\n")
     combat, player, monsters = make_combat(monster_ids=("stabbot",))
@@ -302,6 +355,20 @@ def test_the_gambit_instakill():
     enemy.attack(player, 11)
     assert player.is_dead, "파워드 공격 비차단 피해 → 즉사해야 함"
     print("✅ TheGambit: 파워드 비차단 피해 → 즉시 사망")
+
+
+def test_the_gambit_ignores_unpowered_reflect():
+    print("\n=== TheGambit: Thorns/FlameBarrier Unpowered 반사 피해는 무시 ===\n")
+    from sts2_sim.models.sts2_power import Thorns
+    combat, player, monsters = make_combat(monster_ids=("stabbot",))
+    play(combat, "the_gambit")  # 50블록 + TheGambitP(1)
+    enemy = monsters[0]
+    enemy.apply_power(Thorns(5))
+    player._block = 0
+    play(combat, "strike", target=enemy)  # 플레이어 공격 → 적 Thorns 반격(Unpowered)
+    assert not player.is_dead, "Thorns Unpowered 반격은 TheGambit을 발동시키면 안 됨"
+    assert "the_gambit" in player._powers, "TheGambitP는 소모되지 않고 유지되어야 함"
+    print("✅ TheGambit: Thorns Unpowered 반사 피해로는 사망하지 않음(파워도 유지)")
 
 
 def test_prep_time_vigor():
@@ -326,6 +393,44 @@ def test_automation_energy_every_10_draws():
     combat.draw_cards(1)  # 10번째
     assert player.energy == e0 + 1, player.energy
     print("✅ Automation: 10장째 드로우에서 에너지 +1")
+
+
+def test_automation_instanced_stacking():
+    print("\n=== Automation: Instanced — 오프셋 있는 두 카운터가 개별 발동 ===\n")
+    combat, player, _ = make_combat()
+    combat.draw_pile = [create_card("strike") for _ in range(30)]
+    combat.hand = []
+    play(combat, "automation")  # 1번째 카운터: 10에서 시작
+    combat.draw_cards(4)        # 1번째 카운터 10→6 (아직 미발동)
+    play(combat, "automation")  # 2번째 카운터(독립): 10에서 새로 시작 — 오프셋 발생
+    e0 = player.energy
+    combat.draw_cards(6)        # 1번째 6→0(발동,+1) / 2번째 10→4
+    assert player.energy == e0 + 1, player.energy
+    combat.draw_cards(4)        # 2번째 4→0(발동,+1)
+    assert player.energy == e0 + 2, player.energy
+    print("✅ Automation 2장(오프셋): 병합된 단일 카운터가 아니라 서로 다른 시점에 개별 발동")
+
+
+def test_panache_instanced_stacking():
+    print("\n=== Panache: Instanced — 오프셋 있는 두 카운터가 개별 발동 ===\n")
+    from sts2_sim.models.sts2_power import PanacheP
+    combat, player, _ = make_combat()
+    player.apply_power(PanacheP(10))
+    power = player._powers["panache"]
+    power._instances[0]["applied"] = True
+    power._instances[0]["left"] = 2  # 1번째: 2번만 더 감소하면 발동
+    player.apply_power(PanacheP(14))  # 2번째 인스턴스(독립) 추가 — 병합되지 않음
+    assert len(power._instances) == 2, power._instances
+    power._instances[1]["applied"] = True
+    power._instances[1]["left"] = 5  # 2번째: 아직 멀었음(오프셋)
+    enemy = _enemy(combat)
+    h0 = enemy.current_hp
+    strike = create_card("strike")
+    power.on_card_played(strike, combat)  # 1번째 2→1, 2번째 5→4 (둘 다 미발동)
+    assert enemy.current_hp == h0
+    power.on_card_played(strike, combat)  # 1번째 1→0(발동,+10) / 2번째 4→3(대기)
+    assert h0 - enemy.current_hp == 10, h0 - enemy.current_hp
+    print("✅ Panache 2장(오프셋): 1번째 인스턴스만 먼저 발동, 2번째는 대기 중")
 
 
 def test_calamity_generates_attack_cards():
@@ -447,6 +552,67 @@ def test_entropy_no_force_upgrade():
     print(f"✅ Entropy: 강화된 strike → 비강화 {combat.hand[0].card_id}로 변환")
 
 
+def test_dexterity_ignores_unpowered_block():
+    print("\n=== Dexterity: Unpowered 블록(파워 반응형)에는 적용 안 됨 ===\n")
+    from sts2_sim.models.sts2_power import Dexterity, Metallicize
+    combat, player, _ = make_combat()
+    player.apply_power(Dexterity(3))
+    player.apply_power(Metallicize(5))
+    b0 = player.block
+    player._powers["metallicize"].on_turn_end()  # Unpowered 블록 — Dexterity 미적용
+    assert player.block - b0 == 5, player.block - b0
+    b1 = player.block
+    play(combat, "defend")  # 카드(Move) 블록 — Dexterity 적용
+    gained = player.block - b1
+    assert gained == 5 + 3, gained
+    print("✅ Dexterity: Metallicize(Unpowered) 미적용, Defend(카드) +3 적용")
+
+
+def test_frail_ignores_unpowered_block():
+    print("\n=== Frail: Unpowered 블록(파워 반응형)에는 적용 안 됨 ===\n")
+    from sts2_sim.models.sts2_power import Frail, Metallicize
+    combat, player, _ = make_combat()
+    player.apply_power(Frail(99))
+    player.apply_power(Metallicize(8))
+    b0 = player.block
+    player._powers["metallicize"].on_turn_end()  # Unpowered 블록 — Frail 미적용
+    assert player.block - b0 == 8, player.block - b0
+    b1 = player.block
+    play(combat, "defend")  # 카드(Move) 블록 — Frail 0.75배 적용
+    gained = player.block - b1
+    assert gained == int(5 * 0.75), gained
+    print("✅ Frail: Metallicize(Unpowered) 미적용, Defend(카드) 0.75배 적용")
+
+
+def test_unmovable_ignores_unpowered_block():
+    print("\n=== Unmovable: Unpowered 블록은 집계·배율 모두 제외 ===\n")
+    from sts2_sim.models.sts2_power import Unmovable
+    combat, player, _ = make_combat()
+    player.apply_power(Unmovable(1))
+    b0 = player.block
+    player.gain_block(4, powered=False)  # Unpowered — 배율 미적용, 카운터도 소모 안 됨
+    assert player.block - b0 == 4, player.block - b0
+    b1 = player.block
+    play(combat, "defend")  # 첫 카드/무브 블록 — 2배
+    gained = player.block - b1
+    assert gained == 5 * 2, gained
+    print("✅ Unmovable: Unpowered 블록 미집계, 첫 카드 블록 2배 정상 적용")
+
+
+def test_sleight_of_flesh_reflect_respects_block():
+    print("\n=== SleightOfFlesh: 반사 피해가 블록으로 막힘 (Unpowered이지 Unblockable 아님) ===\n")
+    from sts2_sim.models.sts2_power import Frail
+    combat, player, monsters = make_combat(character_id="necrobinder")
+    play(combat, "sleight_of_flesh")  # SoFP(9)
+    enemy = monsters[0]
+    enemy._block = 5
+    hp0 = enemy.current_hp
+    enemy.apply_power(Frail(2), applier=player)  # 디버프 부여 → 반사 9피해, 5블록 흡수
+    assert enemy.block == 0, enemy.block
+    assert hp0 - enemy.current_hp == 4, hp0 - enemy.current_hp  # 9 - 5(block) = 4
+    print("✅ SleightOfFlesh: 반사 피해 9가 블록 5에 흡수되어 HP 4만 손실")
+
+
 def test_regent_colorless_integration():
     print("\n=== Regent × Colorless 통합 (Quasar/BundleOfJoy/ManifestAuthority/"
           "HeirloomHammer/SpectrumShift) ===\n")
@@ -545,12 +711,18 @@ def main():
     test_nostalgia_settle_override()
     test_stratagem_after_shuffle()
     test_panache_aoe_every_fifth_play()
+    test_panache_instanced_stacking()
     test_rolling_boulder_escalation()
+    test_rolling_boulder_instanced_stacking()
     test_the_bomb_explosion()
+    test_the_bomb_instanced_stacking()
     test_panic_button_no_block()
+    test_panic_button_exempts_power_sourced_block()
     test_the_gambit_instakill()
+    test_the_gambit_ignores_unpowered_reflect()
     test_prep_time_vigor()
     test_automation_energy_every_10_draws()
+    test_automation_instanced_stacking()
     test_calamity_generates_attack_cards()
     test_entropy_transforms_hand_card()
     test_discovery_jack_and_jackpot_generation()
@@ -559,6 +731,10 @@ def main():
     test_character_pool_excludes_cannot_generate_in_combat()
     test_hidden_gem_fallback_preserves_replay_filter()
     test_entropy_no_force_upgrade()
+    test_dexterity_ignores_unpowered_block()
+    test_frail_ignores_unpowered_block()
+    test_unmovable_ignores_unpowered_block()
+    test_sleight_of_flesh_reflect_respects_block()
     test_regent_colorless_integration()
     test_full_combats_all_cards()
     test_full_combats_all_characters_greedy()

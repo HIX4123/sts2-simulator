@@ -245,7 +245,7 @@ class Cloak(STS2Relic):
         if card and hasattr(card, 'card_type'):
             from sts2_sim.models.sts2_card import CardType
             if card.card_type == CardType.SKILL and self.owner:
-                self.owner.gain_block(1)
+                self.owner.gain_block(1, powered=False)
 
 
 class Courier(STS2Relic):
@@ -384,7 +384,7 @@ class TungstenRod(STS2Relic):
     def on_turn_start(self, combat=None, turn: int = 1) -> None:
         """턴 시작 시."""
         if self.owner:
-            self.owner.gain_block(3)
+            self.owner.gain_block(3, powered=False)
 
 
 # ══════════════════════════════════════════

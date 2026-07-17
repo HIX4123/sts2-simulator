@@ -208,16 +208,54 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 - [x] 회귀 테스트 추가(`test_sts2_phase5.py`): verbose on/off 시 결과(승패/층/HP)가
   동일함을 확인, verbose=False는 턴 단위 로그가 전혀 남지 않음을 확인
 
+## ✅ Phase 6i — 엔진 아키텍처 확장 (완료)
+
+Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/Instanced 파워)를
+후속 Phase로 분리해 구현. 5개 캐릭터 전투 엔진 전반에 영향을 주는 변경이라 별도
+아키텍처 확장으로 취급.
+
+- [x] **카드 출처(card_source) 블록 파이프라인**: `Creature.gain_block`/
+  `compute_modified_block`에 `card_sourced` 인자 추가 — `combat._card_effect_active`
+  (카드 자신의 `use()` 실행 구간에서만 True)로 판정. `NoBlockP.modify_block_card_sourced`
+  구현으로 카드 유래 블록만 차단(원본 `cardSource == null` 면제, Metallicize/Plating
+  등 파워 유래 블록은 계속 통과)
+- [x] **파워드/언파워드 피해 구분**: `Creature.take_damage`에 `powered` 인자 추가,
+  `on_take_damage_powered(attacker, hp_lost, powered)` 훅(기존 `on_take_damage`는
+  폴백으로 유지) — `TheGambitP`가 원본 `IsPoweredAttack()`(Move && !Unpowered)
+  게이트를 따라 Thorns/FlameBarrier/Outbreak/Burn/오브 반응형 등 Unpowered 반사·자해
+  피해로는 발동하지 않도록 수정. 9개 호출부에 `powered=False` 배선
+- [x] **`PowerInstanceType.Instanced` 다중 인스턴스**: `Creature._powers`의
+  power_id당 단일 객체 구조는 유지한 채, TheBomb/RollingBoulder/Automation/Panache
+  4종 각각 `self._instances` 리스트 + `apply()` 오버라이드로 재적용 시 병합 대신
+  독립 인스턴스를 추가하도록 구현(`self.amount`는 인스턴스 합으로 하위 호환 유지)
+- [x] **적대적 검증 재시도(1차 세션 한도로 5/7 에이전트 실패 → 재시도 성공)**에서
+  신규 확인 3건 추가 수정:
+  - `Dexterity`/`Frail`/`TempDexterity`: 원본 `IsPoweredCardOrMonsterMoveBlock()`
+    (Move && !Unpowered) 게이트 누락 — Plating/FrostOrb/Afterimage/Rage/FeelNoPain/
+    CurlUp 등 Unpowered 반응형 블록에도 잘못 적용되던 것을 `modify_block_powered`
+    훅으로 수정. `on_block_gained`(Juggernaut)는 원본처럼 powered 무관 항상 발동 유지
+  - `Unmovable`(원본 `IsCardOrMonsterMove()` 게이트, 자체 문서화된 기지 차이)도
+    동일 메커니즘으로 함께 수정
+  - `SleightOfFlesh` 반사 피해가 `take_damage()`를 우회(`lose_hp` 직접 호출)해
+    블록을 무시하고 잘못된 훅 경로를 타던 것을 수정(원본 `ValueProp.Unpowered`만
+    설정, `Unblockable` 아님 — 블록으로 막혀야 함)
+- [x] 회귀 테스트 8종 추가(`test_sts2_phase6g.py`), 13스위트 전체 + 5캐릭터
+  20시드 stats 회귀 확인 — 모든 수치 Phase 6h 기준과 완전 동일(그리디 정책이
+  해당 엣지 케이스 조합에 도달하지 않음)
+
 ## 📋 Phase 6g+ — 남은 확대 (계획)
 
-- [ ] **엔진 아키텍처 확장 (Phase 6g 검증에서 발견, 후속 작업으로 분리)**:
-  (1) `gain_block`/`compute_modified_block`에 카드 출처(card_source) 인자 추가 —
-  NoBlockPower가 카드 유래 블록만 차단하도록, (2) `take_damage`/`on_take_damage`에
-  파워드/언파워드 구분 인자 추가 — TheGambitPower가 Thorns/FlameBarrier 반사
-  피해를 무시하도록, (3) `Creature._powers`가 `PowerInstanceType.Instanced`
-  파워(TheBomb/RollingBoulder/Automation/Panache 등)에 대해 power_id당 다중
-  인스턴스를 보관하도록 — 세 항목 모두 5개 캐릭터 전투 엔진 전반에 영향을 주는
-  변경이라 별도 Phase로 분리
+- [ ] **Strength/Weak/Vulnerable IsPoweredAttack() 게이트 (Phase 6i 중 발견)**:
+  원본 `StrengthPower.ModifyDamageAdditive`/`WeakPower`/`VulnerablePower`.
+  ModifyDamageMultiplicative 전부 `props.IsPoweredAttack()`(Move && !Unpowered)
+  게이트가 있어 Thorns/FlameBarrier/Outbreak/Burn/NecroMastery/SleightOfFlesh 등
+  Unpowered 피해에는 적용되지 않지만, 현재 구현은 무조건 적용됨. Vulnerable(수신
+  측)이 실질적 노출 — Phase 6i에서 Unpowered로 분류해 `take_damage`에 흘려보낸
+  반사·자해 피해들이 전부 영향권. Strength/Weak(가해 측, `compute_attack_damage`)는
+  Unpowered 공격이 애초에 그 파이프라인을 안 타는지 먼저 확인 필요. `take_damage`의
+  `powered` 인자를 incoming 파이프라인까지 마저 흘려보내는 배선 + 각 파워 게이트
+  추가. 별도 검증 필요(승률/평균 층 등 핵심 수치에 실제 영향을 줄 수 있음 — Phase
+  6i 블록 파이프라인 수정과 달리 stats 회귀가 예상됨)
 - [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등

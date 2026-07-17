@@ -509,7 +509,7 @@ class Burn(STS2Card):
     playable = False
 
     def on_turn_end_in_hand(self, source, combat) -> None:
-        source.take_damage(2, source=None)
+        source.take_damage(2, source=None, powered=False)
 
 
 class Void(STS2Card):

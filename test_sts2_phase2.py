@@ -40,7 +40,7 @@ class MockCreature:
         """HP 회복."""
         self._current_hp = min(self._current_hp + amount, self._max_hp)
 
-    def gain_block(self, amount: int) -> None:
+    def gain_block(self, amount: int, powered: bool = True) -> None:
         """블록 획득."""
         self._block += max(0, amount)
 

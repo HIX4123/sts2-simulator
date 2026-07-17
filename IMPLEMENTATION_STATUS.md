@@ -304,29 +304,50 @@ Rare 25, 원본부터 그러함) + 신규 파워 16종.
   - Entropy가 변환 대상 카드의 강화 상태를 대체 카드에 강제로 이전(원본
     Transform 파이프라인은 업그레이드 상태를 전혀 전달하지 않음) → 제거
   - 전부 원본 대조 후 수정 및 회귀 테스트 추가 (`test_sts2_phase6g.py`)
-- **기지 차이로 문서화(수정 보류 — 아키텍처 변경 필요, ROADMAP.md Phase 6g+ 참조):**
-  - **NoBlockPower**: 원본은 `cardSource == null`이면 배율 1(면제)을 반환해
-    "카드 유래 블록"만 차단하지만(Metallicize/오브/렐릭성 블록은 면제), 이
-    구현의 `gain_block`/`compute_modified_block` 파이프라인에는 카드 출처 인자가
-    없어 `NoBlockP`가 모든 파워드 블록을 무조건 차단
-  - **TheGambitPower**: 원본은 `IsPoweredAttack()`(Move && !Unpowered)만
-    즉사를 트리거해 Thorns/FlameBarrier의 Unpowered 반사 피해는 면제되지만,
-    `take_damage`/`on_take_damage`에 파워드/언파워드 구분이 없어 `TheGambitP`가
-    반사 피해에도 반응
-  - **`PowerInstanceType.Instanced`**(TheBomb/RollingBoulder/Automation/
-    Panache 등): 원본은 재적용 시 기존 인스턴스에 병합하지 않고 독립된 새
-    인스턴스를 추가하지만, `Creature._powers`가 power_id당 단일 인스턴스만
-    보관하는 구조라 `STS2Power.apply()`의 기본 병합 로직이 그대로 적용됨
-    (최소 TheBomb·RollingBoulder는 2장 이상 플레이 시 실제 피해량/타이밍이
-    원본과 달라짐)
+- **기지 차이로 문서화(수정 보류, ROADMAP.md Phase 6g+ 참조):**
   - **Entropy 대체 카드 풀**: 원본은 변환 대상 "카드 자신이 속한 풀"(Colorless
     카드라면 ColorlessCardPool)에서 대체 카드를 뽑지만, 카드별 소속 풀 조회
     인프라가 없어 항상 "소유 캐릭터 풀"에서 뽑음 — 손패에 소유 캐릭터 외
     카드(Colorless 등)가 섞였을 때만 관측 가능한 차이
+  - **Strength/Weak/Vulnerable IsPoweredAttack() 게이트**: 원본은 셋 다
+    `props.IsPoweredAttack()`(Move && !Unpowered) 게이트가 있어 Unpowered
+    반사·자해 피해(Thorns/FlameBarrier/Outbreak/Burn/NecroMastery/
+    SleightOfFlesh 등)에는 적용되지 않지만, 현재 구현은 무조건 적용됨.
+    Phase 6i에서 발견 — 다음 작업 단위로 예정(ROADMAP.md 참조)
 - **오탐 판정 1건:** JackOfAllTrades가 MultiplayerOnly 카드 12종을 생성 후보에서
   제외하지 않는 것은 이 프로젝트가 `CardMultiplayerConstraint` 개념 자체를
   구현하지 않기로 한 전역 결정(Phase 6f부터 문서화)의 직접적 귀결 — 별도 버그
   아님
+
+## 🔧 Phase 6i — 엔진 아키텍처 확장
+
+Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase. 5개 캐릭터 전투
+엔진 전반에 영향을 주는 변경이라 별도로 분리해 진행:
+
+- **카드 출처(card_source) 블록 파이프라인**: `gain_block`/`compute_modified_block`에
+  `card_sourced` 인자 추가(`combat._card_effect_active`로 판정) →
+  `NoBlockP.modify_block_card_sourced`가 원본처럼 카드 유래 블록만 차단
+- **파워드/언파워드 피해 구분**: `take_damage`에 `powered` 인자 + `on_take_damage_powered`
+  훅 추가(기존 `on_take_damage`는 폴백 유지) → `TheGambitP`가 원본 `IsPoweredAttack()`
+  게이트를 따라 Unpowered 반사·자해 피해로는 발동하지 않도록 수정. 9개 호출부에
+  `powered=False` 배선(Thorns/FlameBarrier/Juggernaut/Inferno/SerpentForm/Speedster/
+  Hailstorm/Smokestack/Thunder/Outbreak/Burn)
+- **`PowerInstanceType.Instanced` 다중 인스턴스**: `Creature._powers`의 단일 객체
+  구조는 유지한 채 TheBomb/RollingBoulder/Automation/Panache 4종에 `self._instances`
+  리스트 + `apply()` 오버라이드 패턴 적용 — 재적용 시 병합 대신 독립 인스턴스 추가
+- **적대적 검증 재시도에서 추가로 확인된 3건**(1차 시도는 세션 한도로 5/7 에이전트
+  실패, 재시도로 전부 성공):
+  - `Dexterity`/`Frail`/`TempDexterity`가 원본 `IsPoweredCardOrMonsterMoveBlock()`
+    게이트 없이 Plating/FrostOrb/Afterimage/Rage/FeelNoPain/CurlUp 등 Unpowered
+    반응형 블록에도 적용되던 것을 `modify_block_powered` 훅으로 수정
+    (`on_block_gained`/Juggernaut는 원본처럼 powered 무관 항상 발동 유지)
+  - `Unmovable`(자체 문서화된 기지 차이, 원본 `IsCardOrMonsterMove()` 게이트)도
+    동일 메커니즘으로 수정
+  - `SleightOfFlesh` 반사 피해가 `take_damage()`를 우회(`lose_hp` 직접 호출)해
+    블록을 무시하던 것을 수정(원본은 `Unpowered`만 설정, `Unblockable` 아님)
+- 회귀 테스트 8종(`test_sts2_phase6g.py`), 13스위트 + 5캐릭터 20시드 stats 전부
+  Phase 6h 기준과 완전 동일 (그리디 정책이 해당 엣지 케이스에 도달하지 않음 —
+  스택 조합이 실제 플레이에서 드묾)
 
 ## 🔬 생성 방법론 (Phase 6a)
 
@@ -338,7 +359,7 @@ Rare 25, 원본부터 그러함) + 신규 파워 16종.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6g+ 참조 — 엔진 아키텍처 확장(카드 출처 블록 파이프라인/
-파워드-언파워드 피해 구분/Instanced 파워 다중 인스턴스), 몬스터 잔여 ~87종,
+ROADMAP.md의 Phase 6g+ 참조 — Strength/Weak/Vulnerable IsPoweredAttack() 게이트
+(Phase 6i 중 발견, stats 회귀 가능성 있어 별도 검증 필요), 몬스터 잔여 ~87종,
 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension,
 실제 맵 그래프.

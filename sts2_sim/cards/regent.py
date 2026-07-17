@@ -340,8 +340,9 @@ class Glitterstream(_Block):
         from sts2_sim.models.sts2_power import BlockNextTurn
         super().use(source, targets, combat)
         # 원본: 이월 블록도 시전 시점의 블록 수정자(민첩/Frail 등)를 미리 반영
+        # (Hook.ModifyBlock에 cardSource=this 전달 — 카드 유래 블록으로 판정)
         base = 7 if self.upgraded else 5
-        source.apply_power(BlockNextTurn(source.compute_modified_block(base)))
+        source.apply_power(BlockNextTurn(source.compute_modified_block(base, card_sourced=True)))
 
 
 class Glow(STS2Card):

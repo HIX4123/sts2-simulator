@@ -75,13 +75,15 @@ class Strength(STS2Power):
 
 
 class Dexterity(STS2Power):
-    """민첩성 — 블록 증가."""
+    """민첩성 — 블록 증가. Unpowered 블록(파워/오브/렐릭 반응형)에는 적용되지 않음
+    (원본 DexterityPower.ModifyBlockAdditive — IsPoweredCardOrMonsterMoveBlock() 게이트)."""
     power_id = "dexterity"
     name = "Dexterity"
     is_debuff = False
 
-    def modify_block(self, amount: int) -> int:
-        """블록에 dexterity 추가."""
+    def modify_block_powered(self, amount: int, powered: bool) -> int:
+        if not powered:
+            return amount
         return max(0, amount + self.amount)
 
 
@@ -144,7 +146,8 @@ class Weak(STS2Power):
 
 
 class Frail(STS2Power):
-    """허약성 — 블록 0.75배."""
+    """허약성 — 블록 0.75배. Unpowered 블록(파워/오브/렐릭 반응형)에는 적용되지 않음
+    (원본 FrailPower.ModifyBlockMultiplicative — IsPoweredCardOrMonsterMoveBlock() 게이트)."""
     power_id = "frail"
     name = "Frail"
     is_debuff = True
@@ -153,9 +156,9 @@ class Frail(STS2Power):
         super().__init__(amount)
         self.duration = amount
 
-    def modify_block(self, amount: int) -> int:
+    def modify_block_powered(self, amount: int, powered: bool) -> int:
         """블록 0.75배."""
-        if self.duration > 0:
+        if self.duration > 0 and powered:
             return int(amount * 0.75)
         return amount
 
@@ -219,7 +222,7 @@ class Thorns(STS2Power):
     def on_take_damage(self, attacker: Optional[Creature], hp_lost: int) -> None:
         """피격 시 반격."""
         if self.owner and attacker and attacker != self.owner and hp_lost > 0:
-            attacker.take_damage(self.amount, source=self.owner)
+            attacker.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class Ritual(STS2Power):
@@ -244,7 +247,7 @@ class Metallicize(STS2Power):
     def on_turn_end(self) -> None:
         """턴 종료 시 블록 획득."""
         if self.owner and self.amount > 0:
-            self.owner.gain_block(self.amount)
+            self.owner.gain_block(self.amount, powered=False)
 
 
 # ══════════════════════════════════════════
@@ -314,7 +317,7 @@ class CurlUpPower(STS2Power):
     def on_take_damage(self, attacker: Optional[Creature], hp_lost: int) -> None:
         """첫 피격 시 블록 획득 후 제거."""
         if self.owner and hp_lost > 0:
-            self.owner.gain_block(self.amount)
+            self.owner.gain_block(self.amount, powered=False)
             self.remove()
 
 
@@ -342,7 +345,7 @@ class Plating(STS2Power):
 
     def on_turn_end(self) -> None:
         if self.owner and self.amount > 0:
-            self.owner.gain_block(self.amount)
+            self.owner.gain_block(self.amount, powered=False)
 
     def on_turn_start(self) -> None:
         combat = getattr(self.owner, "combat", None) or getattr(self.owner, "combat_state", None)
@@ -400,7 +403,7 @@ class FeelNoPain(STS2Power):
 
     def on_card_exhausted(self, card, combat) -> None:
         if self.owner and self.amount > 0:
-            self.owner.gain_block(self.amount)
+            self.owner.gain_block(self.amount, powered=False)
 
 
 class DarkEmbrace(STS2Power):
@@ -423,7 +426,7 @@ class Rage(STS2Power):
     def on_card_played(self, card, combat) -> None:
         from sts2_sim.models.sts2_card import CardType
         if self.owner and card.card_type == CardType.ATTACK and self.amount > 0:
-            self.owner.gain_block(self.amount)
+            self.owner.gain_block(self.amount, powered=False)
 
     def tick_duration(self) -> None:
         self.remove()
@@ -438,7 +441,7 @@ class FlameBarrier(STS2Power):
 
     def on_take_damage(self, attacker, hp_lost: int) -> None:
         if attacker is not None and attacker is not self.owner and self.amount > 0:
-            attacker.take_damage(self.amount, source=self.owner)
+            attacker.take_damage(self.amount, source=self.owner, powered=False)
 
     def on_enemy_turn_end(self) -> None:
         self.remove()
@@ -459,7 +462,7 @@ class Juggernaut(STS2Power):
         enemies = [e for e in combat.alive_enemies if not e.is_dead]
         if enemies:
             target = combat.rng.choice(enemies)
-            target.take_damage(self.amount, source=self.owner)
+            target.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class Rupture(STS2Power):
@@ -609,7 +612,7 @@ class Inferno(STS2Power):
         if combat is None or self.amount <= 0:
             return
         for enemy in list(combat.alive_enemies):
-            enemy.take_damage(self.amount, source=self.owner)
+            enemy.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class Juggling(STS2Power):
@@ -686,7 +689,9 @@ class Stampede(STS2Power):
 
 
 class Unmovable(STS2Power):
-    """부동 — 매 턴 처음 amount회의 블록 획득이 2배 (원본은 카드/무브 블록 한정)."""
+    """부동 — 매 턴 처음 amount회의 카드/무브 블록 획득이 2배 (원본
+    UnmovablePower.ModifyBlockMultiplicative — IsCardOrMonsterMove() 게이트,
+    Unpowered 반응형 블록은 집계·배율 모두 제외)."""
     power_id = "unmovable"
     name = "Unmovable"
     is_debuff = False
@@ -698,7 +703,9 @@ class Unmovable(STS2Power):
     def on_turn_start(self) -> None:
         self.used_this_turn = 0
 
-    def modify_block(self, amount: int) -> int:
+    def modify_block_powered(self, amount: int, powered: bool) -> int:
+        if not powered:
+            return amount
         if amount > 0 and self.used_this_turn < self.amount:
             self.used_this_turn += 1
             return amount * 2
@@ -766,16 +773,19 @@ class Afterimage(STS2Power):
 
     def on_card_played(self, card, combat) -> None:
         if self.owner and self.amount > 0:
-            self.owner.gain_block(self.amount)
+            self.owner.gain_block(self.amount, powered=False)
 
 
 class TempDexterity(STS2Power):
-    """임시 민첩 (AnticipatePower 등) — 이번 턴만 블록 +amount."""
+    """임시 민첩 (AnticipatePower 등) — 이번 턴만 블록 +amount. 원본은 내부적으로
+    실제 DexterityPower 스택을 적용하므로 동일한 Unpowered 게이트가 적용된다."""
     power_id = "temp_dexterity"
     name = "Temporary Dexterity"
     is_debuff = False
 
-    def modify_block(self, amount: int) -> int:
+    def modify_block_powered(self, amount: int, powered: bool) -> int:
+        if not powered:
+            return amount
         return max(0, amount + self.amount)
 
     def tick_duration(self) -> None:
@@ -922,7 +932,7 @@ class SerpentForm(STS2Power):
         if self.amount <= 0 or not combat.alive_enemies:
             return
         target = combat.rng.choice(combat.alive_enemies)
-        target.take_damage(self.amount, source=self.owner)
+        target.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class DoubleDamage(STS2Power):
@@ -978,7 +988,7 @@ class Speedster(STS2Power):
         if self.amount <= 0 or getattr(combat, "in_hand_draw", False):
             return
         for enemy in list(combat.alive_enemies):
-            enemy.take_damage(self.amount, source=self.owner)
+            enemy.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class Strangle(STS2Power):
@@ -1240,7 +1250,7 @@ class Hailstorm(STS2Power):
             return
         if any(o.orb_id == "frost" for o in queue.orbs):
             for enemy in list(combat.alive_enemies):
-                enemy.take_damage(self.amount, source=self.owner)  # Unpowered
+                enemy.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class Iteration(STS2Power):
@@ -1327,7 +1337,7 @@ class Smokestack(STS2Power):
         if card.card_type != CardType.STATUS:
             return
         for enemy in list(combat.alive_enemies):
-            enemy.take_damage(self.amount, source=self.owner)
+            enemy.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class Spinner(STS2Power):
@@ -1410,7 +1420,7 @@ class Thunder(STS2Power):
             return
         for target in targets:
             if not getattr(target, "is_dead", False):
-                target.take_damage(self.amount, source=self.owner)  # Unpowered
+                target.take_damage(self.amount, source=self.owner, powered=False)
 
 
 class TrashToTreasure(STS2Power):
@@ -2253,7 +2263,8 @@ class FurnaceP(STS2Power):
 
 class AutomationP(STS2Power):
     """오토메이션 — 카드를 10장 뽑을 때마다 에너지 +amount, 카운터 리셋
-    (원본 AutomationPower — BaseCards=10 고정)."""
+    (원본 AutomationPower — BaseCards=10 고정, PowerInstanceType.Instanced:
+    재적용 시 병합하지 않고 독립된 카운터를 추가한다)."""
     power_id = "automation"
     name = "Automation"
     is_debuff = False
@@ -2261,14 +2272,27 @@ class AutomationP(STS2Power):
 
     def __init__(self, amount: int = 0):
         super().__init__(amount)
-        self.cards_left = self.THRESHOLD
+        self._instances = [{"gain": amount, "left": self.THRESHOLD}]
+
+    def apply(self, owner: "Creature", applier: Optional["Creature"] = None) -> None:
+        """Instanced — 재적용 시 기존 인스턴스에 병합하지 않고 독립 카운터 추가."""
+        self.owner = owner
+        self.applier = applier
+        existing = owner._powers.get(self.power_id)
+        if existing is None:
+            owner._powers[self.power_id] = self
+        else:
+            existing._instances.append({"gain": self.amount, "left": self.THRESHOLD})
+            existing.amount = sum(inst["gain"] for inst in existing._instances)
 
     def on_card_drawn(self, card, combat) -> None:
-        self.cards_left -= 1
-        if self.cards_left <= 0:
-            if self.owner is not None:
-                self.owner.gain_energy(self.amount)
-            self.cards_left = self.THRESHOLD
+        if self.owner is None:
+            return
+        for inst in self._instances:
+            inst["left"] -= 1
+            if inst["left"] <= 0:
+                self.owner.gain_energy(inst["gain"])
+                inst["left"] = self.THRESHOLD
 
 
 class BeaconOfHopeP(STS2Power):
@@ -2365,15 +2389,17 @@ class MayhemP(STS2Power):
 
 
 class NoBlockP(STS2Power):
-    """무방비 — 파워드 블록 획득을 완전히 차단 (원본 NoBlockPower — PanicButton).
-    Unpowered 블록(파워가 `_block`에 직접 가산하는 경로)은 이 파이프라인을
+    """무방비 — 카드가 직접 부여하는 블록만 완전히 차단 (원본 NoBlockPower —
+    PanicButton). 파워/오브/렐릭이 부여하는 블록(cardSource == null — 원본
+    ModifyBlockMultiplicative)은 차단하지 않는다(예: Metallicize/Plating).
+    Unpowered 블록(파워가 `_block`에 직접 가산하는 경로)도 이 파이프라인을
     거치지 않아 그대로 적용됨. 적 턴 종료마다 1 감소."""
     power_id = "no_block"
     name = "No Block"
     is_debuff = True
 
-    def modify_block(self, amount: int) -> int:
-        return 0
+    def modify_block_card_sourced(self, amount: int, card_sourced: bool) -> int:
+        return 0 if card_sourced else amount
 
     def on_enemy_turn_end(self) -> None:
         self.amount -= 1
@@ -2398,7 +2424,8 @@ class NostalgiaP(STS2Power):
 
 class PanacheP(STS2Power):
     """패기 — 5장째 카드를 플레이할 때마다(2번째 플레이부터 집계) 모든 적에게
-    Unpowered amount 피해, 카운터 리셋. 내 턴 종료마다도 리셋 (원본 PanachePower)."""
+    Unpowered amount 피해, 카운터 리셋. 내 턴 종료마다도 리셋 (원본 PanachePower,
+    PowerInstanceType.Instanced: 재적용 시 병합하지 않고 독립된 카운터를 추가한다)."""
     power_id = "panache"
     name = "Panache"
     is_debuff = False
@@ -2406,20 +2433,33 @@ class PanacheP(STS2Power):
 
     def __init__(self, amount: int = 0):
         super().__init__(amount)
-        self.cards_left = self.CARDS_LEFT_START
-        self._already_applied = False
+        self._instances = [{"dmg": amount, "left": self.CARDS_LEFT_START, "applied": False}]
+
+    def apply(self, owner: "Creature", applier: Optional["Creature"] = None) -> None:
+        """Instanced — 재적용 시 기존 인스턴스에 병합하지 않고 독립 카운터 추가."""
+        self.owner = owner
+        self.applier = applier
+        existing = owner._powers.get(self.power_id)
+        if existing is None:
+            owner._powers[self.power_id] = self
+        else:
+            existing._instances.append(
+                {"dmg": self.amount, "left": self.CARDS_LEFT_START, "applied": False})
+            existing.amount = sum(inst["dmg"] for inst in existing._instances)
 
     def on_card_played(self, card, combat) -> None:
-        if self._already_applied:
-            self.cards_left -= 1
-            if self.cards_left <= 0:
-                for enemy in list(combat.alive_enemies):
-                    _unpowered_hit(enemy, self.amount)
-                self.cards_left = self.CARDS_LEFT_START
-        self._already_applied = True
+        for inst in self._instances:
+            if inst["applied"]:
+                inst["left"] -= 1
+                if inst["left"] <= 0:
+                    for enemy in list(combat.alive_enemies):
+                        _unpowered_hit(enemy, inst["dmg"])
+                    inst["left"] = self.CARDS_LEFT_START
+            inst["applied"] = True
 
     def on_turn_end(self) -> None:
-        self.cards_left = self.CARDS_LEFT_START
+        for inst in self._instances:
+            inst["left"] = self.CARDS_LEFT_START
 
 
 class PrepTimeP(STS2Power):
@@ -2435,19 +2475,38 @@ class PrepTimeP(STS2Power):
 
 class RollingBoulderP(STS2Power):
     """구르는 바위 — 내 턴 시작마다 모든 적에게 Unpowered amount 피해,
-    이후 amount에 +5 누적 (원본 RollingBoulderPower — IncrementAmount=5 고정)."""
+    이후 amount에 +5 누적 (원본 RollingBoulderPower — IncrementAmount=5 고정,
+    PowerInstanceType.Instanced: 재적용 시 병합하지 않고 독립된 인스턴스를
+    추가한다 — 각자 자기 자신의 값에서만 +5 증가)."""
     power_id = "rolling_boulder"
     name = "Rolling Boulder"
     is_debuff = False
     INCREMENT = 5
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._instances = [amount]
+
+    def apply(self, owner: "Creature", applier: Optional["Creature"] = None) -> None:
+        """Instanced — 재적용 시 기존 인스턴스에 병합하지 않고 독립 인스턴스 추가."""
+        self.owner = owner
+        self.applier = applier
+        existing = owner._powers.get(self.power_id)
+        if existing is None:
+            owner._powers[self.power_id] = self
+        else:
+            existing._instances.append(self.amount)
+            existing.amount = sum(existing._instances)
 
     def on_turn_start(self) -> None:
         combat = getattr(self.owner, "combat", None)
         if combat is None:
             return
         for enemy in list(combat.alive_enemies):
-            _unpowered_hit(enemy, self.amount)
-        self.amount += self.INCREMENT
+            for dmg in self._instances:
+                _unpowered_hit(enemy, dmg)
+        self._instances = [dmg + self.INCREMENT for dmg in self._instances]
+        self.amount = sum(self._instances)
 
 
 class StratagemP(STS2Power):
@@ -2477,7 +2536,9 @@ class TagTeamP(STS2Power):
 
 class TheBombP(STS2Power):
     """폭탄 — amount턴 후(내 턴 종료마다 1 감소) 모든 적에게 Unpowered 피해
-    (원본 TheBombPower — 데미지는 SetDamage로 별도 지정)."""
+    (원본 TheBombPower — 데미지는 SetDamage로 별도 지정. PowerInstanceType.
+    Instanced: 두 번째 Bomb를 플레이하면 병합되지 않고 3부터 다시 카운트하는
+    별개의 폭탄이 추가된다 — 각자 자기 턴 수/데미지를 독립적으로 유지)."""
     power_id = "the_bomb"
     name = "The Bomb"
     is_debuff = False
@@ -2485,31 +2546,58 @@ class TheBombP(STS2Power):
     def __init__(self, amount: int = 0):
         super().__init__(amount)
         self.damage = 40
+        self._instances = [[amount, self.damage]]  # [turns_left, damage] 쌍의 리스트
+
+    def apply(self, owner: "Creature", applier: Optional["Creature"] = None) -> None:
+        """Instanced — 재적용 시 기존 인스턴스에 병합하지 않고 독립 인스턴스 추가."""
+        self.owner = owner
+        self.applier = applier
+        existing = owner._powers.get(self.power_id)
+        if existing is None:
+            owner._powers[self.power_id] = self
+        else:
+            existing._instances.append([self.amount, self.damage])
+            existing.amount = sum(turns for turns, _ in existing._instances)
 
     def set_damage(self, damage: int) -> None:
+        """가장 최근에 추가된 인스턴스(이번 플레이)의 데미지만 설정."""
         self.damage = damage
+        if self._instances:
+            self._instances[-1][1] = damage
 
     def on_turn_end(self) -> None:
-        if self.amount > 1:
-            self.amount -= 1
-            return
         combat = getattr(self.owner, "combat", None)
-        self.remove()
-        if combat is None:
-            return
-        for enemy in list(combat.alive_enemies):
-            _unpowered_hit(enemy, self.damage)
+        remaining = []
+        exploded = []
+        for turns_left, damage in self._instances:
+            turns_left -= 1
+            if turns_left <= 0:
+                exploded.append(damage)
+            else:
+                remaining.append([turns_left, damage])
+        self._instances = remaining
+        if exploded and combat is not None:
+            for enemy in list(combat.alive_enemies):
+                for damage in exploded:
+                    _unpowered_hit(enemy, damage)
+        if not self._instances:
+            self.remove()
+        else:
+            self.amount = sum(turns for turns, _ in self._instances)
 
 
 class TheGambitP(STS2Power):
     """도박 — 다음에 파워드 공격으로 비차단 피해를 받으면 즉사 (원본
-    TheGambitPower, StackType.Single). 자해(중독/화상 등)는 제외."""
+    TheGambitPower, StackType.Single — IsPoweredAttack() 필수: Thorns/
+    FlameBarrier 등 Unpowered 반격 피해는 발동 제외). 자해(중독/화상 등)는
+    이미 attacker가 self이므로 별도 처리 없이 제외."""
     power_id = "the_gambit"
     name = "The Gambit"
     is_debuff = True
 
-    def on_take_damage(self, attacker, hp_lost: int) -> None:
-        if attacker is not None and attacker is not self.owner and hp_lost > 0:
+    def on_take_damage_powered(self, attacker, hp_lost: int, powered: bool) -> None:
+        if (powered and attacker is not None and attacker is not self.owner
+                and hp_lost > 0):
             self.remove()
             if self.owner is not None:
                 self.owner._current_hp = 0

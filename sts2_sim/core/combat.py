@@ -71,6 +71,8 @@ class CombatState:
         self.cards_played_this_combat = 0     # GoldAxe (Colorless) — 전투 전체 누적
         self.verbose = False                  # --verbose — 턴/카드/피격 단위 상세 로그
         self.log: List[str] = []              # verbose=True일 때만 누적
+        self._card_effect_active = False      # NoBlockP — card.use() 실행 구간에서만 True
+                                               # (원본 CreatureCmd.GainBlock의 cardSource 대응)
 
     # ──────────────────────────────────────────
     # 오브/카드가 참조하는 컨텍스트 프로토콜
@@ -533,6 +535,7 @@ class CombatState:
         if self.verbose:
             tgt = f" -> {targets[0].title}" if targets else ""
             self._log(f"  Play {card.name}{tgt} (cost {paid})")
+        self._card_effect_active = True
         card.use(self.player, targets, self)
 
         # OneTwoPunch — 공격 카드 2회 발동
@@ -576,6 +579,7 @@ class CombatState:
             if retargets or card.card_type != CardType.ATTACK:
                 card.use(self.player, retargets, self)
 
+        self._card_effect_active = False
         self._settle_card(card)
         self.player._first_attack_this_turn = False
 
@@ -695,7 +699,9 @@ class CombatState:
         if self.verbose:
             tgt = f" -> {targets[0].title}" if targets else ""
             self._log(f"  [Auto] Play {card.name}{tgt}")
+        self._card_effect_active = True
         card.use(self.player, targets, self)
+        self._card_effect_active = False
         self._settle_card(card, force_exhaust=force_exhaust)
         self.player._first_attack_this_turn = False
         for relic in self.player.relics:

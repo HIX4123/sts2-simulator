@@ -47,7 +47,7 @@ class MockCreature:
 
         return {"hp_lost": hp_dmg}
 
-    def gain_block(self, amount: int) -> None:
+    def gain_block(self, amount: int, powered: bool = True) -> None:
         """블록 획득."""
         # 파워 수정
         for power in self._powers.values():

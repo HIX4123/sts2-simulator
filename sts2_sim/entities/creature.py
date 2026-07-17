@@ -68,7 +68,7 @@ class Creature:
             combat = getattr(applier, "combat", None)
             if outbreak > 0 and combat is not None:
                 for enemy in list(combat.alive_enemies):
-                    enemy.take_damage(outbreak, source=applier)
+                    enemy.take_damage(outbreak, source=applier, powered=False)
         # Shroud — 시전자가 Doom을 부여할 때마다 블록 획득 (원본 ShroudPower)
         if (applier is not None and applier is not self
                 and power.power_id == "doom"):
@@ -79,10 +79,11 @@ class Creature:
             if shroud > 0:
                 applier._block += shroud  # 원본 Unpowered — 민첩 미적용
         # SleightOfFlesh — 시전자가 적에게 디버프를 부여할 때마다 그 적에게 피해
+        # (원본 ValueProp.Unpowered — Unblockable은 아니므로 블록으로 막힘, take_damage 경유 필수)
         if (applier is not None and applier is not self and power.is_debuff):
             sof = applier.get_power_amount("sleight_of_flesh")
             if sof > 0 and not self.is_dead:
-                self.lose_hp(sof)  # 원본 Unpowered — 무보정 피해
+                self.take_damage(sof, source=applier, powered=False)
         return True
 
     def has_power(self, power_id: str) -> bool:
@@ -112,14 +113,18 @@ class Creature:
                 amount = p.modify_damage(amount, is_attack=True)
         return max(0, amount)
 
-    def take_damage(self, amount: int, source: Optional[object] = None) -> Dict[str, Any]:
-        """피격 처리: 수신 측 수정(Vulnerable/Colossus/Cruelty) → 블록 → HP → 피격 트리거."""
+    def take_damage(self, amount: int, source: Optional[object] = None,
+                     powered: bool = True) -> Dict[str, Any]:
+        """피격 처리: 수신 측 수정(Vulnerable/Colossus/Cruelty) → 블록 → HP → 피격 트리거.
+        powered=False — 원본 ValueProp.Unpowered(오브/파워 반응형 피해 전부 해당,
+        Thorns/FlameBarrier 반격 포함): TheGambitPower의 IsPoweredAttack() 트리거
+        조건에서 제외된다. 실제 공격 카드(_deal_attack)/몬스터 공격은 기본값(True)."""
         # Osty DieForYou — 살아있는 Osty가 플레이어를 겨냥한 공격을 대신 받는다
         # (원본 DieForYouPower.ModifyUnblockedDamageTarget — 파워드 공격 한정).
         osty = getattr(self, "osty", None)
         if (osty is not None and osty is not self and osty.is_alive
                 and source is not None and source is not self):
-            return osty.take_damage(amount, source)
+            return osty.take_damage(amount, source, powered)
         pre_incoming = amount
         for p in list(self._powers.values()):
             if getattr(p, "damage_side", None) == "incoming":
@@ -152,23 +157,50 @@ class Creature:
 
         if hp_lost > 0:
             for p in list(self._powers.values()):
-                on_hit = getattr(p, "on_take_damage", None)
-                if on_hit:
-                    on_hit(source, hp_lost)
+                on_hit_powered = getattr(p, "on_take_damage_powered", None)
+                if on_hit_powered is not None:
+                    on_hit_powered(source, hp_lost, powered)
+                else:
+                    on_hit = getattr(p, "on_take_damage", None)
+                    if on_hit:
+                        on_hit(source, hp_lost)
 
         # damage = 파워 수정 후 총 피해량(블록 흡수 포함) — BlightStrike/ReaperForm 등이 참조
         return {"hp_lost": hp_lost, "damage": amount, "killed": self.is_dead}
 
-    def compute_modified_block(self, amount: int) -> int:
+    def compute_modified_block(self, amount: int, card_sourced: bool = False,
+                                powered: bool = True) -> int:
         """파워(Dexterity/Frail 등)의 modify_block만 적용한 값 반환 (실제 블록은 미변경).
-        Glitterstream처럼 시전 시점에 수정된 값을 나중에 지급해야 하는 카드용."""
+        Glitterstream처럼 시전 시점에 수정된 값을 나중에 지급해야 하는 카드용.
+        card_sourced — 원본 cardSource != null 대응(NoBlockPower 전용).
+        powered — 원본 IsPoweredCardOrMonsterMoveBlock()(Move && !Unpowered) 대응
+        (DexterityPower/FrailPower 전용) — 카드 플레이/몬스터 무브의 블록만 True,
+        파워·오브·렐릭이 직접 부여하는 반응형 블록은 False. 두 축은 서로 다른 파워가
+        각자 필요한 훅(modify_block_card_sourced 또는 modify_block_powered)만
+        선택적으로 구현하며, 둘 다 없으면 modify_block(amount)로 대체된다."""
         for p in list(self._powers.values()):
-            amount = p.modify_block(amount)
+            modify_cs = getattr(p, "modify_block_card_sourced", None)
+            modify_pw = getattr(p, "modify_block_powered", None)
+            if modify_cs is not None:
+                amount = modify_cs(amount, card_sourced)
+            elif modify_pw is not None:
+                amount = modify_pw(amount, powered)
+            else:
+                amount = p.modify_block(amount)
         return max(0, amount)
 
-    def gain_block(self, amount: int) -> None:
-        """블록 획득 (Dexterity/Frail 수정 적용, on_block_gained 트리거)."""
-        gained = self.compute_modified_block(amount)
+    def gain_block(self, amount: int, powered: bool = True) -> None:
+        """블록 획득 (Dexterity/Frail 수정 적용, on_block_gained 트리거는 원본
+        AfterBlockGained처럼 powered 여부와 무관하게 항상 발동 — Juggernaut 등).
+        card_sourced 여부는 combat._card_effect_active(카드 자신의 use() 실행 구간에서만
+        True)로 판정 — 카드가 직접 부여하는 블록과 파워/오브/렐릭/몬스터 자체 반응으로
+        얻는 블록을 구분한다 (원본 CreatureCmd.GainBlock의 cardPlay 인자 대응).
+        powered=False — 파워/오브/렐릭이 직접 부여하는 반응형 블록(Plating/FrostOrb/
+        Afterimage/Rage/FeelNoPain/CurlUp 등, 원본 ValueProp.Unpowered)이 호출 시
+        명시; 카드 플레이·몬스터 무브는 기본값(True)."""
+        combat = getattr(self, "combat", None)
+        card_sourced = bool(getattr(combat, "_card_effect_active", False))
+        gained = self.compute_modified_block(amount, card_sourced=card_sourced, powered=powered)
         self._block += gained
         if gained > 0:
             for p in list(self._powers.values()):

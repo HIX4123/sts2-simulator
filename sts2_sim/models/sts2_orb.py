@@ -75,7 +75,7 @@ class LightningOrb(STS2Orb):
             return []
         if target is None or target.is_dead:
             target = combat.rng.choice(enemies)
-        target.take_damage(amount, source=self.owner)
+        target.take_damage(amount, source=self.owner, powered=False)
         return [target]
 
     def passive(self, combat, target=None) -> None:
@@ -94,11 +94,11 @@ class FrostOrb(STS2Orb):
 
     def passive(self, combat, target=None) -> None:
         if self.owner:
-            self.owner.gain_block(self.passive_val)
+            self.owner.gain_block(self.passive_val, powered=False)
 
     def evoke(self, combat) -> list:
         if self.owner:
-            self.owner.gain_block(self.evoke_val)
+            self.owner.gain_block(self.evoke_val, powered=False)
         return []
 
 
@@ -126,7 +126,7 @@ class DarkOrb(STS2Orb):
         if not enemies:
             return []
         weakest = min(enemies, key=lambda e: e.current_hp)
-        weakest.take_damage(self._accumulated_evoke, source=self.owner)
+        weakest.take_damage(self._accumulated_evoke, source=self.owner, powered=False)
         return [weakest]
 
 
@@ -173,7 +173,7 @@ class GlassOrb(STS2Orb):
             return
         self._current_passive = max(0, self._current_passive - 1)
         for enemy in [e for e in combat.alive_enemies if not e.is_dead]:
-            enemy.take_damage(amount, source=self.owner)
+            enemy.take_damage(amount, source=self.owner, powered=False)
 
     def evoke(self, combat) -> list:
         amount = self.evoke_val
@@ -181,7 +181,7 @@ class GlassOrb(STS2Orb):
             return []
         hit = [e for e in combat.alive_enemies if not e.is_dead]
         for enemy in hit:
-            enemy.take_damage(amount, source=self.owner)
+            enemy.take_damage(amount, source=self.owner, powered=False)
         return hit
 
 
