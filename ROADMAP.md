@@ -263,9 +263,50 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
   - 회귀 테스트 4종 추가, 13스위트 + 5캐릭터 stats 재확인 — 이번에도 완전 동일
     (Intangible+Vulnerable+Cruelty 동시 보유는 그리디 정책이 도달하지 않는 조합)
 
-## 📋 Phase 6g+ — 남은 확대 (계획)
+## ✅ Phase 6j — 몬스터 확대 2차 · 배치1 (완료)
 
-- [ ] 몬스터 잔여 ~87종 (보스/다체 연동 포함: Aeonglass, Fabricator 소환 등)
+몬스터 잔여 ~87종 이식의 첫 배치. 13종 + 관련 인카운터 13종 + 상태이상 카드 2종.
+
+- [x] **7a**: FuzzyWurmCrawler, Nibbit, Seapunk, TurretOperator, PunchConstruct
+- [x] **7b**: DevotedSculptor, KinPriest, Toadpole, SludgeSpinner, HauntedShip
+- [x] **7c**: Wriggler, Myte, FrogKnight (+ 헬퍼 `_FrogKnightHalfHealthBranch`,
+  HP 절반 이하 시점을 조건 분기하는 `RandomBranchState` 서브클래스)
+- [x] **신규 상태이상 카드 2종** (`sts2_card.py`): `Infection`(비용0/사용불가,
+  손패 보유 중 턴 종료마다 자해 3), `Toxic`(비용1/소모, 사용 시 자해 5) —
+  원본 `Infection.cs`/`Toxic.cs` 그대로
+- [x] **`encounters.py` 배선**: 13개 신규 `ENCOUNTERS` 항목 추가(원본
+  `GenerateMonsters()` 구성 그대로). `Wriggler`/`KinPriest`는 각각 미이식
+  소환/보스 의존성(PhrogParasite/TheKinBoss)이 있어 단독 인카운터 없이 보류.
+  난이도 풀(EASY/MEDIUM/HARD/ELITE) 편입은 Phase 6a 방식대로 실측 승률
+  테스트 이후로 의도적 보류 — 현재는 `make_encounter()`로만 접근 가능
+- [x] **버그 발견 및 수정: `Ritual` 파워 첫 틱 스킵 누락** — 적대적 검증(7b
+  리뷰)에서 발견 후 원본 `RitualPower.cs`의 `WasJustAppliedByEnemy` 플래그를
+  직접 대조해 확인. 원본은 `AfterApplied`가 적을 표시하고 `AfterSideTurnEnd`가
+  그 표시를 소비하며 스킵하므로, **부여된 바로 그 턴 다음 턴은 힘이 발동하지
+  않고 그 다음 턴부터 발동**한다. 포팅본은 즉시 발동시키고 있었음 — 기존
+  `_PowerCardTrigger`의 `_skip_next` 플래그 패턴을 재사용해 `Ritual.apply()`/
+  `on_turn_start()`에 동일 메커니즘 적용. `DevotedSculptor`(+9)/`DampCultist`
+  (+5)/`CalcifiedCultist`(+2) 3종 전부에 영향 — 해당 몬스터를 낀 전투는
+  수치가 미세하게(스킵된 한 틱만큼) 약해짐. `git stash`로 격리한 전/후
+  stats 비교로 차이가 작고 방향이 올바름을 확인(다른 모든 Phase와 달리
+  이번은 의도적으로 수치가 바뀌는 버그 수정)
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6j.py`, 14개 테스트: 등록/
+  인카운터/HP범위/상태머신 분기/상태이상 삽입/Ritual 스킵 등) + 기존
+  `test_sts2_phase2.py`/`test_sts2_phase4.py`의 Ritual 관련 테스트를 새
+  타이밍에 맞게 재작성 — 14스위트 전체 통과
+- [x] **최종 적대적 재검증**(Ritual 수정 엣지 케이스 + encounters.py 배선
+  충실도 전담): Ritual 관련 잠재 이슈 3건 제기 → 전부 검증 단계에서
+  "현재 코드베이스에서 도달 불가능한 데드 코드 경로"로 반박·기각(포션
+  시스템 미이식으로 플레이어측 Ritual 보유 경로 없음, 3개 사용처 전부
+  fresh 적용만 발생해 재적용/스택 케이스 없음) — 확정 버그 0건.
+  encounters.py 배선은 이슈 제기 자체 없음(0건)
+
+## 📋 Phase 6j+ — 남은 확대 (계획)
+
+- [ ] 몬스터 잔여 ~74종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
+  Mk1-3, WaterfallGiant, LagavulinMatriarch, Queen 등 — 개발용 클래스인
+  DeprecatedMonster/FakeMerchantMonster/OneHpMonster/TenHpMonster/TestSubject
+  5종은 제외한 실제 카운트)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
 - [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)

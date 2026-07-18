@@ -19,6 +19,16 @@ from sts2_sim.entities.monsters_extra import (
     AssassinRubyRaider, BruteRubyRaider, TrackerRubyRaider, CrossbowRubyRaider,
     SewerClam, SnappingJaxfruit, SneakyGremlin,
     Mawler, GlobeHead, VineShambler,
+    LivingShield,
+)
+from sts2_sim.entities.monsters_batch7a import (
+    FuzzyWurmCrawler, Nibbit, Seapunk, TurretOperator, PunchConstruct,
+)
+from sts2_sim.entities.monsters_batch7b import (
+    DevotedSculptor, Toadpole, SludgeSpinner, HauntedShip,
+)
+from sts2_sim.entities.monsters_batch7c import (
+    Myte, FrogKnight,
 )
 
 
@@ -36,6 +46,26 @@ def _raiders_normal(rng: random.Random) -> List[MonsterModel]:
             CrossbowRubyRaider, TrackerRubyRaider]
     picks = rng.sample(pool, 3)
     return [cls() for cls in picks]
+
+
+def _nibbits_weak(rng: random.Random) -> List[MonsterModel]:
+    """NibbitsWeak: Nibbit 1마리, IsAlone=True로 시작 (BUTT_MOVE부터)."""
+    return [Nibbit(is_alone=True)]
+
+
+def _nibbits_normal(rng: random.Random) -> List[MonsterModel]:
+    """NibbitsNormal: Nibbit 2마리, front 슬롯만 IsFront=True (SLICE_MOVE부터)."""
+    return [Nibbit(is_front=True), Nibbit()]
+
+
+def _toadpoles_weak(rng: random.Random) -> List[MonsterModel]:
+    """ToadpolesWeak: Toadpole 2마리, 1마리만 IsFront=True (SPIKEN_MOVE부터)."""
+    return [Toadpole(is_front=True), Toadpole(is_front=False)]
+
+
+def _mytes_normal(rng: random.Random) -> List[MonsterModel]:
+    """MytesNormal: Myte 2마리, first→TOXIC_MOVE / second→SUCK_MOVE로 시작."""
+    return [Myte(), Myte(is_second=True)]
 
 
 ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
@@ -56,6 +86,22 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     "jaxfruit_normal": lambda rng: [SnappingJaxfruit(), SnappingJaxfruit()],
     # GremlinMercNormal: GremlinMerc(미이식) ×2 + Fat/Sneaky → 그렘린 2종만
     "gremlins_weak": lambda rng: [SneakyGremlin(), FatGremlin()],
+    # ── Phase 6j 배치1 (원본 구성 그대로) ──
+    "fuzzy_wurm_crawler_weak": lambda rng: [FuzzyWurmCrawler()],
+    "nibbits_weak": _nibbits_weak,
+    "nibbits_normal": _nibbits_normal,
+    "seapunk_weak": lambda rng: [Seapunk()],
+    "seapunk_normal": lambda rng: [CalcifiedCultist(), Seapunk()],
+    "turret_operator_weak": lambda rng: [LivingShield(), TurretOperator()],
+    "punch_construct_normal": lambda rng: [PunchConstruct()],
+    "devoted_sculptor_weak": lambda rng: [DevotedSculptor()],
+    "toadpoles_weak": _toadpoles_weak,
+    "sludge_spinner_weak": lambda rng: [SludgeSpinner()],
+    "haunted_ship_normal": lambda rng: [HauntedShip()],
+    "mytes_normal": _mytes_normal,
+    "frog_knight_normal": lambda rng: [FrogKnight()],
+    # Wriggler: 독립 인카운터 없음 — 원본에서는 PhrogParasite(미이식, AfterDeath 소환)
+    # 전용 소환체. KinPriest: TheKinBoss(보스, KinFollower 미이식) 전용이라 미배치.
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

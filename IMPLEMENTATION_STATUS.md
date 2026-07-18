@@ -7,10 +7,10 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 34종 | 상태 머신 AI, 실제 HP/데미지 |
-| 인카운터 | 12종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
+| 몬스터 | 47종 | 상태 머신 AI, 실제 HP/데미지 |
+| 인카운터 | 25종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 500종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상/토큰 (STS2 전체 593종 중) |
+| 카드 | 502종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic 포함)/토큰 (STS2 전체 593종 중) |
 | 파워 | 161종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 34종
+## 👹 몬스터 47종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -68,9 +68,16 @@ Chomper, FatGremlin, Parafright, EyeWithTeeth, BattleFriendV1/V2
 MagiKnight, Assassin/Brute/Tracker/CrossbowRubyRaider, SewerClam, SnappingJaxfruit,
 SneakyGremlin, Noisebot, LivingShield, Mawler, GlobeHead, VineShambler
 
-특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce), 조건 분기(LivingShield),
-도주(FatGremlin/SneakyGremlin 대기→행동), 상태이상 삽입(Dazed/Slimed), Ritual 램핑,
-Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄.
+**Phase 6j 배치1 (monsters_batch7a/7b/7c.py):**
+FuzzyWurmCrawler, Nibbit, Seapunk, TurretOperator, PunchConstruct (7a) ·
+DevotedSculptor, KinPriest, Toadpole, SludgeSpinner, HauntedShip (7b) ·
+Wriggler, Myte, FrogKnight (7c)
+
+특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce), 조건 분기(LivingShield,
+FrogKnight HP 절반), 도주(FatGremlin/SneakyGremlin 대기→행동), 상태이상 삽입(Dazed/Slimed),
+Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍 버그 수정), Artifact 디버프 무효,
+Plating 감쇠 블록, Tangled 공격 봉쇄, 슬롯 의존 초기 행동(Nibbit/Toadpole/Myte/Wriggler/
+PunchConstruct — 생성자 플래그로 인카운터 슬롯 위치 반영).
 
 ## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
 
@@ -367,16 +374,59 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
   - 회귀 테스트 4종 추가, 13스위트 + 5캐릭터 stats 재확인(20/100시드) — 전부
     기존 수치와 완전 동일
 
-## 🔬 생성 방법론 (Phase 6a)
+## ✅ Phase 6j — 몬스터 확대 2차 · 배치1
 
-몬스터 17종은 멀티에이전트 파이프라인으로 이식:
+몬스터 잔여 ~87종 이식의 첫 배치(13종). 3개 서브배치(7a/7b/7c)로 나눠
+멀티에이전트 파이프라인(이식→검증)으로 진행, 완료 후 나도 직접 디컴파일
+원본과 전수 대조.
+
+- **7a** (`monsters_batch7a.py`): FuzzyWurmCrawler, Nibbit, Seapunk,
+  TurretOperator, PunchConstruct — 적대적 검증 0건
+- **7b** (`monsters_batch7b.py`): DevotedSculptor, KinPriest, Toadpole,
+  SludgeSpinner, HauntedShip — 적대적 검증에서 `Ritual` 파워 버그 1건 발견
+  (아래 참조)
+- **7c** (`monsters_batch7c.py`): Wriggler, Myte, FrogKnight — 헬퍼
+  `_FrogKnightHalfHealthBranch`(HP 절반 이하 조건 분기 `RandomBranchState`)
+  포함, 적대적 검증 0건
+- **신규 상태이상 카드 2종**(`sts2_card.py`): `Infection`(비용0/사용불가,
+  손패 보유 중 턴 종료마다 자해 3), `Toxic`(비용1/소모, 사용 시 자해 5)
+- **`encounters.py`**: 신규 13개 인카운터 배선(원본 `GenerateMonsters()`
+  구성 그대로). `Wriggler`/`KinPriest`는 미이식 소환/보스 의존성
+  (PhrogParasite/TheKinBoss)으로 단독 인카운터 없이 보류. 난이도 풀 편입은
+  실측 승률 테스트 이후로 의도적 보류(Phase 6a 선례 — ROADMAP.md 참조)
+- **버그 수정: `Ritual` 첫 틱 스킵 누락** — 원본 `RitualPower.cs`의
+  `WasJustAppliedByEnemy` 플래그(`AfterApplied`가 세우고 `AfterSideTurnEnd`가
+  소비 후 스킵)를 직접 대조해 확인. 기존 `_PowerCardTrigger`의 `_skip_next`
+  플래그 패턴을 재사용해 `Ritual.apply()`/`on_turn_start()`에 적용 —
+  부여된 다음 턴은 힘이 발동하지 않고 그 다음 턴부터 발동하도록 수정.
+  `DevotedSculptor`(+9)/`DampCultist`(+5)/`CalcifiedCultist`(+2) 3종에 영향,
+  해당 전투 수치가 미세하게(스킵된 한 틱만큼) 변경됨을 `git stash` 전/후
+  비교로 확인(다른 Phase와 달리 이번은 의도적 수치 변경)
+- 회귀 테스트: 신규 `test_sts2_phase6j.py`(14개) + 기존
+  `test_sts2_phase2.py`/`test_sts2_phase4.py`의 Ritual 타이밍 테스트 재작성
+  — 14스위트 전체 통과
+- **최종 적대적 재검증**(Ritual 수정 엣지 케이스 전담 + encounters.py 배선
+  충실도): Ritual 관련 잠재 이슈 3건(재적용/스택 시 스킵 재무장 누락,
+  owner.IsEnemy 게이트 부재, on_turn_start vs AfterSideTurnEnd 타이밍
+  일반화 우려) 제기 → 전부 "포션 시스템 미이식 + 현재 3개 사용처 모두
+  fresh 적용만 발생"으로 실측 도달 불가능함이 확인되어 기각(확정 버그
+  0건). encounters.py는 이슈 제기 자체 없음
+
+## 🔬 생성 방법론 (Phase 6a/6j)
+
+몬스터는 멀티에이전트 파이프라인으로 이식:
 1. **이식 에이전트** — 디컴파일 .cs와 기존 패턴을 읽고 Python 클래스 생성
-2. **검증 에이전트** — 원본과 수치/상태그래프 적대 대조 (LeafSlimeS 시드 재현성 버그,
-   SpectralKnight CanRepeatXTimes 전개 오류를 잡아 수정)
-3. **수동 대조** — 세션 한도로 미검증된 13종을 원본 소스와 직접 대조 (전부 일치 확인)
+2. **검증 에이전트** — 원본과 수치/상태그래프 적대 대조 (Phase 6a: LeafSlimeS
+   시드 재현성 버그, SpectralKnight CanRepeatXTimes 전개 오류 / Phase 6j:
+   Ritual 첫 틱 스킵 누락)
+3. **수동 대조** — 세션 한도로 미검증된 항목 또는 전체를 원본 소스와 직접
+   재대조 (Phase 6j는 13종 전부 재대조, 3건의 자체 테스트 저작 버그도
+   근본 원인 분석으로 수정 — Nibbit setup_for_combat 누락, SludgeSpinner
+   advance_state 직접 호출로 인한 cannot_repeat 무력화, FrogKnight
+   BeetleCharge 데미지의 Strength 스택 반영 누락)
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6g+ 참조 — 몬스터 잔여 ~87종,
+ROADMAP.md의 Phase 6j+ 참조 — 몬스터 잔여 ~74종(보스/다체 연동 포함),
 렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension,
 실제 맵 그래프.

@@ -151,7 +151,8 @@ def test_random_branch():
 
 
 def test_ritual_scaling():
-    """DampCultist: Ritual로 DARK_STRIKE가 턴마다 강해짐."""
+    """DampCultist: Ritual 적용 다음 턴은 첫 틱 스킵(힘 0), 그 다음 턴부터 강해짐
+    (원본 RitualPower.WasJustAppliedByEnemy)."""
     print("\n=== Ritual 스케일링 ===\n")
 
     player = make_player()
@@ -159,16 +160,25 @@ def test_ritual_scaling():
     combat = CombatState(player, [cultist], seed=1)
     combat.start()
 
-    cultist.take_turn([player])  # INCANTATION → Ritual 5
-    hp0 = player.current_hp
+    def monster_turn_start():
+        # 몬스터 턴 시작 훅 시뮬레이션 (combat.run 내부와 동일)
+        for power in list(cultist._powers.values()):
+            if hasattr(power, "on_turn_start"):
+                power.on_turn_start()
 
-    # 몬스터 턴 시작 훅 시뮬레이션 (combat.run 내부와 동일)
-    for power in list(cultist._powers.values()):
-        if hasattr(power, "on_turn_start"):
-            power.on_turn_start()
-    cultist.take_turn([player])  # DARK_STRIKE: 1 + 힘5 = 6
-    assert hp0 - player.current_hp == 6, f"Ritual 스케일 실패: {hp0 - player.current_hp}"
-    print(f"✅ DARK_STRIKE: 기본 1딜 + 힘 5 = 6딜")
+    monster_turn_start()          # 턴1 시작 (Ritual 아직 없음)
+    cultist.take_turn([player])   # 턴1: INCANTATION → Ritual(5) 부여
+
+    monster_turn_start()          # 턴2 시작 — 첫 틱 스킵, 힘 여전히 0
+    hp0 = player.current_hp
+    cultist.take_turn([player])   # 턴2: DARK_STRIKE 1딜 (힘 0)
+    assert hp0 - player.current_hp == 1, f"Ritual 첫 틱 스킵 실패: {hp0 - player.current_hp}"
+
+    monster_turn_start()          # 턴3 시작 — 힘 +5 발동
+    hp1 = player.current_hp
+    cultist.take_turn([player])   # 턴3: DARK_STRIKE 1 + 힘5 = 6
+    assert hp1 - player.current_hp == 6, f"Ritual 스케일 실패: {hp1 - player.current_hp}"
+    print("✅ DARK_STRIKE: 부여 다음 턴 1딜(첫 틱 스킵) → 그 다음 턴부터 6딜(기본 1 + 힘 5)")
 
 
 def test_run_loop():

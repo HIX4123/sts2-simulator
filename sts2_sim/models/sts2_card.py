@@ -512,6 +512,34 @@ class Burn(STS2Card):
         source.take_damage(2, source=None, powered=False)
 
 
+class Infection(STS2Card):
+    """감염 — 사용 불가, 턴 종료 시 손패에 있으면 3 피해 (Unpowered, 블록 적용).
+    (원본 Infection.cs: Unplayable, DamageVar(3, Unpowered|Move) — Wriggler WRIGGLE_MOVE)."""
+    card_id = "infection"
+    name = "Infection"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 0
+    playable = False
+
+    def on_turn_end_in_hand(self, source, combat) -> None:
+        source.take_damage(3, source=None, powered=False)
+
+
+class Toxic(STS2Card):
+    """맹독 — 1코스트, 효과 없음, 소모. 턴 종료 시 손패에 있으면 5 피해 (Unpowered, 블록 적용).
+    (원본 Toxic.cs: Exhaust, DamageVar(5, Unpowered|Move) — Myte TOXIC_MOVE)."""
+    card_id = "toxic"
+    name = "Toxic"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 1
+    exhausts = True
+
+    def on_turn_end_in_hand(self, source, combat) -> None:
+        source.take_damage(5, source=None, powered=False)
+
+
 class Void(STS2Card):
     """공허 — 사용 불가, 에테리얼, 드로우 시 에너지 -1 (Turbo)."""
     card_id = "void"
@@ -560,6 +588,8 @@ CARD_REGISTRY = {
     "wound": Wound,
     "burn": Burn,
     "void": Void,
+    "infection": Infection,
+    "toxic": Toxic,
 }
 
 

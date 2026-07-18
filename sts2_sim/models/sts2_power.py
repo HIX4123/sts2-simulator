@@ -235,13 +235,28 @@ class Thorns(STS2Power):
 
 
 class Ritual(STS2Power):
-    """의식 — 턴 시작마다 Strength 획득."""
+    """의식 — 턴 시작마다 Strength 획득. 원본 RitualPower.AfterApplied/
+    AfterSideTurnEnd의 WasJustAppliedByEnemy 플래그 대응: 부여된 바로 그 턴은
+    발동하지 않고(첫 틱 스킵) 그 다음 턴 시작부터 발동한다."""
     power_id = "ritual"
     name = "Ritual"
     is_debuff = False
 
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._skip_next = False
+
+    def apply(self, owner, applier=None) -> None:
+        fresh = self.power_id not in owner._powers
+        super().apply(owner, applier)
+        if fresh:
+            owner._powers[self.power_id]._skip_next = True
+
     def on_turn_start(self) -> None:
-        """턴 시작 시 Strength 부여."""
+        """턴 시작 시 Strength 부여 (첫 틱은 스킵)."""
+        if self._skip_next:
+            self._skip_next = False
+            return
         if self.owner and self.amount > 0:
             strength = Strength(self.amount)
             strength.apply(self.owner, self.owner)

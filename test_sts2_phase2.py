@@ -205,15 +205,18 @@ def test_monster_combat():
     assert intent_3.intent_type == IntentType.ATTACK
     print(f"Turn 3: DampCultist 인텐트: {intent_3.intent_type.name} (DARK_STRIKE 반복)")
 
-    # Ritual 파워 동작: 턴 시작마다 힘 +5
+    # Ritual 파워 동작: 부여된 바로 그 턴은 발동하지 않고(첫 틱 스킵,
+    # 원본 RitualPower.WasJustAppliedByEnemy) 그 다음 턴 시작부터 힘 +5.
     cultist2 = DampCultist()
     cultist2.setup_for_combat(None)
     cultist2.take_turn([])  # INCANTATION → Ritual(5)
     assert cultist2.get_power_amount("ritual") == 5
     ritual = cultist2._powers["ritual"]
-    ritual.on_turn_start()
+    ritual.on_turn_start()  # 부여된 턴의 시작 — 스킵
+    assert cultist2.get_power_amount("strength") == 0
+    ritual.on_turn_start()  # 다음 턴 시작 — 발동
     assert cultist2.get_power_amount("strength") == 5
-    print("✅ DampCultist: Ritual(5) → 턴 시작 힘 +5")
+    print("✅ DampCultist: Ritual(5) → 다음 턴 시작부터 힘 +5 (첫 틱 스킵)")
 
     # Chomper: 개전 시 Artifact 2
     chomper = Chomper()
