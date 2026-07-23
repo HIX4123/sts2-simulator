@@ -12,7 +12,9 @@ from sts2_sim.core.encounters import ENCOUNTERS, make_encounter
 from sts2_sim.core.policy import GreedyPolicy
 from sts2_sim.entities.player import Player
 from sts2_sim.entities.sts2_character import create_character
-from sts2_sim.entities.sts2_monster import create_monster, MONSTER_REGISTRY, IntentType
+from sts2_sim.entities.sts2_monster import (
+    create_monster, MONSTER_REGISTRY, IntentType, FlailKnight, TwigSlimeM,
+)
 from sts2_sim.entities.monsters_batch8 import (
     MysteriousKnight, Flyconid, ShrinkerBeetle, LouseProgenitor, SpinyToad,
     Byrdonis, FossilStalker, SoulFysh,
@@ -361,6 +363,33 @@ def test_beckon_respects_intangible_cap():
     print("✅ Beckon: Intangible 보유 시 6 피해가 1로 제한됨 (Unblockable이지만 Cap은 미우회)")
 
 
+def test_flail_knight_and_twig_slime_m_weight_audit():
+    """MysteriousKnight의 AddBranch 오버로드 오독 버그를 잡은 뒤 코드베이스 전체를
+    감사(`grep add_branch.*weight=[2-9]`)해서 발견한 선행 사례 2건: FlailKnight
+    (RAM_MOVE/FLAIL_MOVE 가중치를 각각 2로, TwigSlimeM(POKEY_POUNCE_MOVE 가중치를
+    2로) 오독했던 기존 버그. 두 원본 모두 AddBranch(state, int) 2-인자 호출이라
+    weight가 아니라 maxRepeats로 바인딩되므로 실제로는 균등(1:1 또는 1:1:1)
+    분기 + CanRepeatXTimes(2)다. MysteriousKnight가 FlailKnight의 무브그래프를
+    그대로 상속하므로 Phase 6k 표면에도 걸쳐 있는 버그였다."""
+    fk = FlailKnight()
+    fk.setup_for_combat(None)
+    rand = next(s for s in fk._move_state_machine.states if s.name == "RAND")
+    weights = {s.name: w for s, w, cr, cd, mr in rand.branches}
+    assert weights == {"WAR_CHANT": 1, "FLAIL_MOVE": 1, "RAM_MOVE": 1}, weights
+    max_repeats = {s.name: mr for s, w, cr, cd, mr in rand.branches}
+    assert max_repeats["FLAIL_MOVE"] == 2 and max_repeats["RAM_MOVE"] == 2
+
+    ts = TwigSlimeM()
+    ts.setup_for_combat(None)
+    rand2 = next(s for s in ts._move_state_machine.states if s.name == "RAND")
+    weights2 = {s.name: w for s, w, cr, cd, mr in rand2.branches}
+    assert weights2 == {"POKEY_POUNCE_MOVE": 1, "STICKY_SHOT_MOVE": 1}, weights2
+    max_repeats2 = {s.name: mr for s, w, cr, cd, mr in rand2.branches}
+    assert max_repeats2["POKEY_POUNCE_MOVE"] == 2
+    print("✅ FlailKnight/TwigSlimeM: 균등 가중치(1:1:1 / 1:1) + max_repeats=2 확인"
+          " (Phase 6k 감사에서 발견한 선행 오버로드 오독 버그 수정)")
+
+
 def test_jaxfruit_normal_now_includes_real_flyconid():
     """jaxfruit_normal: Flyconid 이식 완료로 원본 구성(Jaxfruit+Flyconid) 복원."""
     import random
@@ -410,6 +439,7 @@ def main():
     test_louse_progenitor_curl_block_is_powered()
     test_soul_fysh_self_intangible_decays_on_enemy_turn_end()
     test_beckon_respects_intangible_cap()
+    test_flail_knight_and_twig_slime_m_weight_audit()
     test_jaxfruit_normal_now_includes_real_flyconid()
     test_full_combats_batch8_smoke()
 

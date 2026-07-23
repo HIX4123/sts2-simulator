@@ -317,7 +317,7 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
 - [x] **`encounters.py` 배선**: 8개 신규 `ENCOUNTERS` 항목(원본 `RoomType`별
   Weak/Normal/Elite/Boss 구성 그대로 — RoomType 자체는 전투 시뮬레이터
   범위 밖이라 미모델링)
-- [x] **적대적 검증에서 발견한 버그 6건 확정 수정**:
+- [x] **적대적 검증 + 사후 감사에서 발견한 버그 10건 확정 수정**:
   1. **Flyconid RAND/INITIAL 분기 가중치 오독** — 원본 `RandomBranchState.cs`의
      `AddBranch(state, int, MoveRepeatType)` 3-인자 오버로드는 int가 weight가
      아니라 **cooldown**으로 바인딩됨(오버로드 결정은 C# 인자 타입으로 확정적).
@@ -360,7 +360,17 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
      나중에 힘을 얻는 통상적인 순서와 그 반대 순서의 결과가 달라지던 버그
      (원본 `Hook.ModifyDamageInternal`은 Additive→Multiplicative 순서를 엄격히
      분리) — `compute_attack_damage`를 2단계로 분리해 순서 불변성 확보
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6k.py`, 20개 테스트) — 위 9건
+  10. **(사후 감사로 발견, 선행 버그) FlailKnight/TwigSlimeM 분기 가중치
+      오독** — 위 1·2번과 완전히 동일한 `AddBranch` 오버로드 오독 패턴이
+      Phase 6a에서 이미 이식된 `FlailKnight`(`FLAIL_MOVE`/`RAM_MOVE`
+      가중치 각 2로 오독, 실제론 균등 1:1:1 + `CanRepeatXTimes(2)`)와
+      `TwigSlimeM`(`POKEY_POUNCE_MOVE` 가중치 2, 실제론 균등 1:1 +
+      `CanRepeatXTimes(2)`)에도 있었음을 리뷰(advisor) 지적으로
+      `add_branch(...weight=[2-9])` 전수 감사 후 발견해 수정.
+      `MysteriousKnight`가 `FlailKnight`의 무브그래프를 그대로 상속하므로
+      Phase 6k 표면에도 걸쳐 있던 버그. 수정 후 EASY/MEDIUM/HARD/ELITE_POOL
+      전체(5캐릭터 × 40~60시드)에서 승률/평균턴 변화 없음을 실측 확인
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6k.py`, 21개 테스트) — 위 10건
   버그 전부 재발 방지 테스트 포함, 15스위트 전체 통과
 
 ## 📋 Phase 6k+ — 남은 확대 (계획)

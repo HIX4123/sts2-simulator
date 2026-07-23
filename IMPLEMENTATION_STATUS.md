@@ -438,7 +438,7 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
   않는 메타 정보라 미모델링, 원본에서도 RoomType/IsWeak은 전투 판정 코드와
   무관함을 확인)
 
-### 적대적 검증 — 확정 버그 9건 (Phase 6j 이후 가장 많은 발견 건수)
+### 적대적 검증 — 확정 버그 10건 (Phase 6j 이후 가장 많은 발견 건수)
 
 Phase 6j와 동일하게 review→verify 워크플로우로 8개 항목(몬스터 7종+파워
 조합/보스/인카운터)을 적대 검증했다. 세션 한도로 verify 단계 일부가
@@ -514,6 +514,18 @@ Phase 6j와 동일하게 review→verify 워크플로우로 8개 항목(몬스�
    damage`를 `damage_stage`(additive/multiplicative) 기준 2단계로 분리해
    `Creature.take_damage`의 기존 Multiplicative→Cap 분리 패턴과 대칭을
    맞춤
+10. **(advisor 리뷰 지적으로 발견, 선행 버그) FlailKnight/TwigSlimeM 분기
+    가중치 오독** — 1·2번과 동일한 `AddBranch` 오버로드 오독 패턴이 Phase 6a
+    때 이식된 `FlailKnight`(`FLAIL_MOVE`/`RAM_MOVE` 가중치 각 2로 오독)와
+    `TwigSlimeM`(`POKEY_POUNCE_MOVE` 가중치 2로 오독)에도 있었음을 사후
+    검토(체크리스트: "같은 실수를 다른 곳에서도 하지 않았는지 감사하라")로
+    발견. `add_branch(...weight=[2-9])` 전수 grep 후 각 원본 `.cs`와
+    재대조해 확정 — 두 몬스터 모두 실제로는 균등 분기(1:1:1 / 1:1) +
+    `CanRepeatXTimes(2)`다. `MysteriousKnight`가 `FlailKnight`의 무브그래프를
+    그대로 상속하므로 Phase 6k 표면에도 걸쳐 있던 버그. 수정 후
+    EASY/MEDIUM/HARD/ELITE_POOL 전체(5캐릭터×40~60시드)에서 승률/평균턴
+    변화 없음을 실측 확인(구조적으로 올바른 수정이되 현재 시뮬레이터의
+    관측 가능한 밸런스에는 영향 없음)
 
 기각된 항목(현재 코드베이스에서 도달 불가능하거나 연출 전용으로 확인):
 인카운터 8종 배선 전수 대조 0건, jaxfruit_normal 배치 확인 0건,
@@ -524,10 +536,11 @@ applier 인자 누락(무해), FossilStalker의 펫 제외/그룹핑 로직(펫 
 누락/Vulnerable applier 누락(전부 단일플레이어 엔진에서 무관측), LouseProgenitor
 의 Curled 플래그 미이식(연출 전용, 재확인 완료).
 
-- 회귀 테스트: 신규 `test_sts2_phase6k.py`(20개) — 위 9건 버그 전부 재발
+- 회귀 테스트: 신규 `test_sts2_phase6k.py`(21개) — 위 10건 버그 전부 재발
   방지 테스트 포함(Flyconid 균등가중치+쿨다운+폴백, FossilStalker 3연속
   금지, LouseProgenitor Frail-블록, SoulFysh Intangible 감쇠, Beckon+
-  Intangible Cap, Thorns Unpowered 무반격 등), 15스위트 전체 통과
+  Intangible Cap, Thorns Unpowered 무반격, FlailKnight/TwigSlimeM 가중치
+  감사 등), 15스위트 전체 통과
 
 ## 🔬 생성 방법론 (Phase 6a/6j/6k)
 

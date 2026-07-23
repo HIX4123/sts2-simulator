@@ -325,7 +325,11 @@ class TwigSlimeS(MonsterModel):
 
 
 class TwigSlimeM(MonsterModel):
-    """나뭇가지 슬라임 (중) — HP 26~28. POKEY_POUNCE 11딜 / STICKY_SHOT Slimed 1장."""
+    """나뭇가지 슬라임 (중) — HP 26~28. POKEY_POUNCE 11딜 / STICKY_SHOT Slimed 1장 —
+    두 분기 균등(1:1), POKEY_POUNCE는 2연속까지 허용 후 3연속 금지
+    (MoveRepeatType.CanRepeatXTimes(2)). 원본 TwigSlimeM.cs의 AddBranch(state, 2)
+    2-인자 호출은 weight가 아니라 maxRepeats로 바인딩됨 — Phase 6k 사후 감사로
+    발견해 수정 (RandomBranchState.AddBranch 오버로드 오독)."""
     monster_id = "twig_slime_m"
     title = "Twig Slime (M)"
 
@@ -343,7 +347,7 @@ class TwigSlimeM(MonsterModel):
         sticky = MoveState("STICKY_SHOT_MOVE", self._sticky_move,
                            Intent(IntentType.STATUS))
         branch = RandomBranchState("RAND")
-        branch.add_branch(pounce, weight=2)
+        branch.add_branch(pounce, weight=1, max_repeats=2)
         branch.add_branch(sticky, weight=1, cannot_repeat=True)
         pounce.follow_up_state = branch
         sticky.follow_up_state = branch
@@ -491,7 +495,14 @@ class AxeRubyRaider(MonsterModel):
 
 class FlailKnight(MonsterModel):
     """도리깨 기사 (엘리트) — HP 101.
-    WAR_CHANT 힘+3 (연속 불가) / FLAIL 9딜×2 (w2) / RAM 15딜 (w2). 초기 RAM."""
+    WAR_CHANT 힘+3(연속 불가) / FLAIL 9딜×2 / RAM 15딜 — 세 분기 균등(1:1:1),
+    FLAIL/RAM은 동일 분기 2연속까지 허용 후 3연속 금지(MoveRepeatType.
+    CanRepeatXTimes(2)). 초기 RAM.
+    (원본 FlailKnight.cs의 AddBranch(state, 2) 2-인자 호출은 weight가 아니라
+    maxRepeats로 바인딩됨 — Phase 6k에서 Flyconid/FossilStalker 검증 중 발견한
+    RandomBranchState.AddBranch 오버로드 오독 패턴이 이 몬스터에도 있었음을
+    사후 감사로 발견해 수정. MysteriousKnight가 이 무브그래프를 그대로
+    상속하므로 영향받음.)"""
     monster_id = "flail_knight"
     title = "Flail Knight"
 
@@ -515,8 +526,8 @@ class FlailKnight(MonsterModel):
                         Intent(IntentType.ATTACK, damage=self.ram_damage))
         branch = RandomBranchState("RAND")
         branch.add_branch(chant, weight=1, cannot_repeat=True)
-        branch.add_branch(flail, weight=2)
-        branch.add_branch(ram, weight=2)
+        branch.add_branch(flail, weight=1, max_repeats=2)
+        branch.add_branch(ram, weight=1, max_repeats=2)
         chant.follow_up_state = branch
         flail.follow_up_state = branch
         ram.follow_up_state = branch
