@@ -590,7 +590,7 @@ class LivingShield(MonsterModel):
         monster = self
 
         class _ShieldSlamBranch(RandomBranchState):
-            def resolve(self, rng, last_move_name):
+            def resolve(self, rng, last_move_name, history=None):
                 return slam if monster._get_ally_count() > 0 else smash
 
         branch = _ShieldSlamBranch("SHIELD_SLAM_BRANCH")

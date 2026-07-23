@@ -301,14 +301,80 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
   fresh 적용만 발생해 재적용/스택 케이스 없음) — 확정 버그 0건.
   encounters.py 배선은 이슈 제기 자체 없음(0건)
 
-## 📋 Phase 6j+ — 남은 확대 (계획)
+## ✅ Phase 6k — 몬스터 확대 2차 · 배치8 (완료)
 
-- [ ] 몬스터 잔여 ~74종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
-  Mk1-3, WaterfallGiant, LagavulinMatriarch, Queen 등 — 개발용 클래스인
-  DeprecatedMonster/FakeMerchantMonster/OneHpMonster/TenHpMonster/TestSubject
-  5종은 제외한 실제 카운트)
+몬스터 잔여 ~74종의 두 번째 배치. 8종 + 관련 인카운터 8종 + 신규 파워 3종 +
+상태이상 카드 1종. Act1 보스 SoulFysh 포함.
+
+- [x] **배치8**: MysteriousKnight(FlailKnight 상속, 개전 힘+6/도금+6),
+  Flyconid(취약/허약/공격 3분기, 신규 파워 불필요), ShrinkerBeetle(신규
+  `ShrinkPower`), LouseProgenitor(기존 `CurlUpPower` 재사용), SpinyToad(가시
+  토글, 신규 파워 불필요), Byrdonis(엘리트, 신규 `TerritorialPower` —
+  자기 턴마다 힘 누적), FossilStalker(신규 `SuckPower` — 파워드 공격 적중
+  시 힘 획득), SoulFysh(Act1 보스, 신규 상태이상 카드 `Beckon`)
+- [x] **`jaxfruit_normal` 원본 구성 복원**: Flyconid 미이식 시절 SnappingJaxfruit
+  ×2로 대체해뒀던 것을 원본(`SnappingJaxfruit`+`Flyconid`)으로 교체
+- [x] **`encounters.py` 배선**: 8개 신규 `ENCOUNTERS` 항목(원본 `RoomType`별
+  Weak/Normal/Elite/Boss 구성 그대로 — RoomType 자체는 전투 시뮬레이터
+  범위 밖이라 미모델링)
+- [x] **적대적 검증에서 발견한 버그 6건 확정 수정**:
+  1. **Flyconid RAND/INITIAL 분기 가중치 오독** — 원본 `RandomBranchState.cs`의
+     `AddBranch(state, int, MoveRepeatType)` 3-인자 오버로드는 int가 weight가
+     아니라 **cooldown**으로 바인딩됨(오버로드 결정은 C# 인자 타입으로 확정적).
+     세 분기 모두 실제 base weight는 균등 1:1:1이며, VULNERABLE_SPORES_MOVE는
+     최근 3무브, FRAIL_SPORES_MOVE는 최근 2무브 이력에 자신이 없어야 선택
+     가능(cooldown 게이트). 엔진에 `cooldown`/`max_repeats`/이력(history) 추적을
+     새로 추가해 재현 (`RandomBranchState`/`MonsterMoveStateMachine`)
+  2. **FossilStalker RAND 분기 동일 오독** — 2-인자 `AddBranch(state, int)`의
+     int는 weight가 아니라 **maxRepeats**(`MoveRepeatType.CanRepeatXTimes`)로
+     바인딩됨. 세 분기 균등 1:1:1이되 동일 분기 2연속까지는 허용, 3연속은
+     금지 — 위 엔진 확장의 `max_repeats` 파라미터로 재현(적대적 검증
+     이후 원본 재대조 중 직접 발견)
+  3. **SoulFysh 자기부여 Intangible 영구 누적** — `combat.py`가 `on_enemy_turn_end`를
+     플레이어 파워에만 통지해 몬스터가 스스로에게 건 파워는 절대 감소하지
+     않던 엔진 버그. FADE_MOVE마다 Intangible이 계속 쌓여 보스전이 사실상
+     불가능해짐 — 몬스터 파워에도 동일 통지를 추가해 수정
+  4. **FossilStalker Suck 파워 조기 반영** — `LASH_MOVE`(2연타) 안에서 첫 히트로
+     얻은 힘이 즉시 두 번째 히트 데미지에 반영되어 총딜 9(원본은 6). 원본은
+     공격 커맨드 전체가 끝난 뒤 착지 횟수만큼 한 번에 힘을 부여 — 히트 시점엔
+     카운트만 하고 무브 종료 시(`take_turn`) 일괄 적용하도록 `SuckPower`에
+     `flush_landed_attacks` 추가
+  5. **LouseProgenitor 블록 획득 powered 플래그 반전** — `CURL_AND_GROW_MOVE`의
+     블록 14는 원본이 `ValueProp.Move`(파워드)인데 `powered=False`로 잘못
+     구현되어 Frail 배율을 우회하고 있었음 — `powered=True`(기본값)로 수정
+  6. **Thorns/FlameBarrier/CurlUpPower의 IsPoweredAttack 게이트 누락** —
+     SpinyToad의 가시 토글 검증 중 발견. 세 반격형 파워 모두 Unpowered
+     피해(오브/파워 반응형)에도 반격하던 것을 `on_take_damage_powered` 훅으로
+     교체해 게이트 추가 (SpinyToad 고유 결함이 아니라 공통 이식 누락)
+  7. **SoulFysh Beckon 뽑을더미 삽입이 "무작위 위치"가 아니라 "다음 드로우
+     확정"이었던 문제** — `draw_pile.append`가 무작위 위치 삽입이 아니라
+     사실상 맨 위(다음 드로우 확정)였음. 원본 `CardPilePosition.Random`에
+     맞춰 `combat.py`에 `draw_random`(무작위 인덱스 삽입) 모드 추가
+  8. **Beckon의 Unblockable 자해가 Intangible Cap을 우회** — `lose_hp` 직접
+     호출이 블록뿐 아니라 Intangible의 무조건 1 제한(Cap 단계)까지 건너뛰고
+     있었음 — `take_damage`에 `unblockable` 인자를 추가해 Cap 파이프라인은
+     유지한 채 블록만 우회하도록 수정
+  9. **(부수 발견) outgoing 데미지 파이프라인 Additive/Multiplicative 미분리** —
+     Strength(Additive)와 Weak/Shrink/DoubleDamage(Multiplicative)가 파워
+     딕셔너리 삽입 순서대로 한 루프에서 섞여 처리되어, Shrink를 먼저 걸고
+     나중에 힘을 얻는 통상적인 순서와 그 반대 순서의 결과가 달라지던 버그
+     (원본 `Hook.ModifyDamageInternal`은 Additive→Multiplicative 순서를 엄격히
+     분리) — `compute_attack_damage`를 2단계로 분리해 순서 불변성 확보
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6k.py`, 20개 테스트) — 위 9건
+  버그 전부 재발 방지 테스트 포함, 15스위트 전체 통과
+
+## 📋 Phase 6k+ — 남은 확대 (계획)
+
+- [ ] 몬스터 잔여 ~66종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
+  Mk1-3, WaterfallGiant, LagavulinMatriarch, Queen, TheLost/TheForgotten/
+  TheInsatiable(Possess 계열 신규 파워 필요) 등 — 개발용 클래스인
+  DeprecatedMonster/FakeMerchantMonster/OneHpMonster/TenHpMonster/TestSubject,
+  렐릭 전용 소환 펫(Byrdpip/PaelsLegion 등), 훈련용 더미(BattleFriendV3)는
+  제외한 실제 카운트)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
+  (Phase 6k 정찰로 최소 28종 추가 확인 — Slippery/Stock/Surprise/CrabRage/
+  Constrict/Slumber/HardToKill/Minion 등)
 - [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
 - [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 업그레이드/보상 기회 확대로 엘리트 승률 개선
 - [ ] MCTS 정책 실험

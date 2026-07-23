@@ -66,6 +66,7 @@ class Strength(STS2Power):
     name = "Strength"
     is_debuff = False
     damage_side = "outgoing"
+    damage_stage = "additive"
 
     def modify_damage(self, amount: int, is_attack: bool = True) -> int:
         """공격 데미지에 strength 추가."""
@@ -223,14 +224,17 @@ class Poison(STS2Power):
 
 
 class Thorns(STS2Power):
-    """가시 — 공격받으면 반격 데미지."""
+    """가시 — 공격받으면 반격 데미지. Unpowered 피해(오브/파워 반응형)에는 반격하지
+    않음 (원본 ThornsPower.BeforeDamageReceived — IsPoweredAttack() 게이트,
+    적대적 검증에서 발견해 수정)."""
     power_id = "thorns"
     name = "Thorns"
     is_debuff = False
 
-    def on_take_damage(self, attacker: Optional[Creature], hp_lost: int) -> None:
-        """피격 시 반격."""
-        if self.owner and attacker and attacker != self.owner and hp_lost > 0:
+    def on_take_damage_powered(self, attacker: Optional[Creature], hp_lost: int,
+                                powered: bool = True) -> None:
+        """피격(파워드 한정) 시 반격."""
+        if self.owner and attacker and attacker != self.owner and hp_lost > 0 and powered:
             attacker.take_damage(self.amount, source=self.owner, powered=False)
 
 
@@ -333,16 +337,74 @@ class ShackledPower(STS2Power):
 
 
 class CurlUpPower(STS2Power):
-    """웅크리기 (Curl Up) — 첫 피격 시 블록 획득."""
+    """웅크리기 (Curl Up) — 첫 피격 시 블록 획득. Unpowered 피해(오브/파워 반응형)에는
+    반응하지 않음 (원본 CurlUpPower.AfterDamageReceived — IsPoweredAttack() 게이트)."""
     power_id = "curl_up"
     name = "Curl Up"
     is_debuff = False
 
-    def on_take_damage(self, attacker: Optional[Creature], hp_lost: int) -> None:
-        """첫 피격 시 블록 획득 후 제거."""
-        if self.owner and hp_lost > 0:
+    def on_take_damage_powered(self, attacker: Optional[Creature], hp_lost: int,
+                                powered: bool = True) -> None:
+        """첫 피격(파워드 한정) 시 블록 획득 후 제거."""
+        if self.owner and hp_lost > 0 and powered:
             self.owner.gain_block(self.amount, powered=False)
             self.remove()
+
+
+class ShrinkPower(STS2Power):
+    """줄어들기 — 소유자(부여자) 자신의 공격 데미지 30% 감소 (ShrinkerBeetle SHRINKER_MOVE).
+    amount<0이면 무한 지속(감소 없음); 그 외에는 매 자기 턴 종료마다 1 감소해 소멸
+    (원본 ShrinkPower — DamageDecrease(30)는 amount와 무관한 고정값)."""
+    power_id = "shrink"
+    name = "Shrink"
+    is_debuff = True
+    damage_side = "outgoing"
+
+    def modify_damage(self, amount: int, is_attack: bool = True) -> int:
+        if is_attack:
+            return int(amount * 0.7)
+        return amount
+
+    def tick_duration(self) -> None:
+        if self.amount >= 0:
+            self.amount -= 1
+            if self.amount <= 0:
+                self.remove()
+
+
+class TerritorialPower(STS2Power):
+    """텃세 — 자신의 턴이 끝날 때마다 힘 +amount (Byrdonis 개전 부여, 매 라운드 누적)."""
+    power_id = "territorial"
+    name = "Territorial"
+    is_debuff = False
+
+    def on_turn_end(self) -> None:
+        if self.owner is None:
+            return
+        self.owner.apply_power(Strength(self.amount))
+
+
+class SuckPower(STS2Power):
+    """흡수 — 자신의 파워드 공격이 적중(피해 관통)할 때마다 힘 +amount (FossilStalker 개전 부여).
+    원본 SuckPower.AfterAttack은 다단히트 공격 커맨드 전체가 끝난 뒤 착지한 히트 수만큼
+    힘을 한 번에 부여한다 — 같은 다단히트 무브(예: LASH_MOVE 2연타) 안에서 앞선 히트로
+    얻은 힘이 곧바로 다음 히트의 데미지를 부풀리면 안 되므로, 적중 시점엔 카운트만 하고
+    무브가 끝난 뒤(flush_landed_attacks, MonsterModel.take_turn에서 호출) 실제 적용한다."""
+    power_id = "suck"
+    name = "Suck"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._pending = 0
+
+    def on_landed_attack(self) -> None:
+        self._pending += 1
+
+    def flush_landed_attacks(self) -> None:
+        if self._pending and self.owner is not None:
+            self.owner.apply_power(Strength(self.amount * self._pending))
+        self._pending = 0
 
 
 class Focus(STS2Power):
@@ -458,13 +520,15 @@ class Rage(STS2Power):
 
 class FlameBarrier(STS2Power):
     """화염 방벽 — 이번 라운드 피격 시 공격자에게 amount 반격.
-    몬스터 턴이 끝난 뒤 제거 (플레이어 턴 종료 tick에서 지우면 반격 불가)."""
+    몬스터 턴이 끝난 뒤 제거 (플레이어 턴 종료 tick에서 지우면 반격 불가).
+    Unpowered 피해(오브/파워 반응형)에는 반격하지 않음 (원본 FlameBarrierPower.
+    AfterDamageReceived — IsPoweredAttack() 게이트, 적대적 검증에서 발견해 수정)."""
     power_id = "flame_barrier"
     name = "Flame Barrier"
     is_debuff = False
 
-    def on_take_damage(self, attacker, hp_lost: int) -> None:
-        if attacker is not None and attacker is not self.owner and self.amount > 0:
+    def on_take_damage_powered(self, attacker, hp_lost: int, powered: bool = True) -> None:
+        if attacker is not None and attacker is not self.owner and self.amount > 0 and powered:
             attacker.take_damage(self.amount, source=self.owner, powered=False)
 
     def on_enemy_turn_end(self) -> None:
@@ -506,6 +570,7 @@ class Vigor(STS2Power):
     name = "Vigor"
     is_debuff = False
     damage_side = "outgoing"
+    damage_stage = "additive"
 
     def modify_damage(self, amount: int, is_attack: bool = True) -> int:
         if is_attack and self.amount > 0:
@@ -526,6 +591,7 @@ class TempStrength(STS2Power):
     power_id = "temp_strength"
     name = "Temporary Strength"
     damage_side = "outgoing"
+    damage_stage = "additive"
 
     @property
     def is_debuff(self) -> bool:

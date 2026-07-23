@@ -30,6 +30,10 @@ from sts2_sim.entities.monsters_batch7b import (
 from sts2_sim.entities.monsters_batch7c import (
     Myte, FrogKnight,
 )
+from sts2_sim.entities.monsters_batch8 import (
+    MysteriousKnight, Flyconid, ShrinkerBeetle, LouseProgenitor, SpinyToad,
+    Byrdonis, FossilStalker, SoulFysh,
+)
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -68,6 +72,12 @@ def _mytes_normal(rng: random.Random) -> List[MonsterModel]:
     return [Myte(), Myte(is_second=True)]
 
 
+def _flyconid_normal(rng: random.Random) -> List[MonsterModel]:
+    """FlyconidNormal: 중형 슬라임(LeafSlimeM/TwigSlimeM 중 무작위 1) + Flyconid."""
+    medium = rng.choice([LeafSlimeM, TwigSlimeM])
+    return [medium(), Flyconid()]
+
+
 ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── 원본 구성 그대로 ──
     "slimes_weak": _slimes_weak,
@@ -82,8 +92,7 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── 부분 구성 (미이식 몬스터 대체) ──
     # FabricatorNormal: Fabricator + 봇 소환 → 봇 2종만
     "bots_normal": lambda rng: [Stabbot(), Zapbot()],
-    # SnappingJaxfruitNormal: Jaxfruit + Flyconid(미이식) → Jaxfruit ×2
-    "jaxfruit_normal": lambda rng: [SnappingJaxfruit(), SnappingJaxfruit()],
+    "jaxfruit_normal": lambda rng: [SnappingJaxfruit(), Flyconid()],
     # GremlinMercNormal: GremlinMerc(미이식) ×2 + Fat/Sneaky → 그렘린 2종만
     "gremlins_weak": lambda rng: [SneakyGremlin(), FatGremlin()],
     # ── Phase 6j 배치1 (원본 구성 그대로) ──
@@ -102,6 +111,15 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     "frog_knight_normal": lambda rng: [FrogKnight()],
     # Wriggler: 독립 인카운터 없음 — 원본에서는 PhrogParasite(미이식, AfterDeath 소환)
     # 전용 소환체. KinPriest: TheKinBoss(보스, KinFollower 미이식) 전용이라 미배치.
+    # ── Phase 6k 배치8 (원본 구성 그대로) ──
+    "mysterious_knight_event": lambda rng: [MysteriousKnight()],
+    "flyconid_normal": _flyconid_normal,
+    "shrinker_beetle_weak": lambda rng: [ShrinkerBeetle()],
+    "louse_progenitor_normal": lambda rng: [LouseProgenitor()],
+    "spiny_toad_normal": lambda rng: [SpinyToad()],
+    "byrdonis_elite": lambda rng: [Byrdonis()],
+    "fossil_stalker_normal": lambda rng: [FossilStalker()],
+    "soul_fysh_boss": lambda rng: [SoulFysh()],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

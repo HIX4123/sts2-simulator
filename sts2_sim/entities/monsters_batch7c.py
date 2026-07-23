@@ -169,7 +169,8 @@ class _FrogKnightHalfHealthBranch(RandomBranchState):
         self._tongue_lash = tongue_lash
         self._beetle_charge = beetle_charge
 
-    def resolve(self, rng: random.Random, last_move_name: Optional[str]) -> MoveState:
+    def resolve(self, rng: random.Random, last_move_name: Optional[str],
+                history: Optional[List[str]] = None) -> MoveState:
         owner = self._owner
         if (not owner.has_beetle_charged
                 and owner.current_hp < owner.max_hp // 2):

@@ -106,20 +106,31 @@ class Creature:
     # ──────────────────────────────────────────
 
     def compute_attack_damage(self, base: int) -> int:
-        """공격자 측 데미지 수정 (Strength → Weak 순)."""
+        """공격자 측 데미지 수정 — 원본 Hook.ModifyDamageInternal과 동일하게 Additive
+        단계(Strength/Vigor/TempStrength)를 전부 적용한 뒤 Multiplicative 단계
+        (Weak/Shrink/DoubleDamage)를 적용한다. 파워 딕셔너리 삽입 순서와 무관하게
+        고정된 순서를 보장해야 하므로(Additive→Multiplicative가 뒤바뀌면 배율이
+        힘 증가분에도 걸리거나 걸리지 않는 차이가 생김) 단일 루프로 섞어 처리하지
+        않고 두 단계로 분리한다."""
         amount = base
-        for p in list(self._powers.values()):
-            if getattr(p, "damage_side", None) == "outgoing":
-                amount = p.modify_damage(amount, is_attack=True)
+        outgoing = [p for p in self._powers.values() if getattr(p, "damage_side", None) == "outgoing"]
+        additive = [p for p in outgoing if getattr(p, "damage_stage", None) == "additive"]
+        multiplicative = [p for p in outgoing if getattr(p, "damage_stage", None) != "additive"]
+        for p in additive:
+            amount = p.modify_damage(amount, is_attack=True)
+        for p in multiplicative:
+            amount = p.modify_damage(amount, is_attack=True)
         return max(0, amount)
 
     def take_damage(self, amount: int, source: Optional[object] = None,
-                     powered: bool = True) -> Dict[str, Any]:
+                     powered: bool = True, unblockable: bool = False) -> Dict[str, Any]:
         """피격 처리: 수신 측 수정(Vulnerable/Colossus 등 배율 → Intangible 등 상한)
         → 블록 → HP → 피격 트리거.
         powered=False — 원본 ValueProp.Unpowered(오브/파워 반응형 피해 전부 해당,
         Thorns/FlameBarrier 반격 포함): TheGambitPower의 IsPoweredAttack() 트리거
-        조건에서 제외된다. 실제 공격 카드(_deal_attack)/몬스터 공격은 기본값(True)."""
+        조건에서 제외된다. 실제 공격 카드(_deal_attack)/몬스터 공격은 기본값(True).
+        unblockable=True — 원본 ValueProp.Unblockable(Beckon 등): Multiplicative/Cap
+        단계는 powered 여부와 무관하게 그대로 적용되지만 블록 흡수만 건너뛴다."""
         # Osty DieForYou — 살아있는 Osty가 플레이어를 겨냥한 공격을 대신 받는다
         # (원본 DieForYouPower.ModifyUnblockedDamageTarget — 파워드 공격 한정).
         osty = getattr(self, "osty", None)
@@ -153,8 +164,11 @@ class Creature:
         if amount <= 0:
             return {"hp_lost": 0, "damage": 0, "killed": False}
 
-        block_absorbed = min(self._block, amount)
-        self._block -= block_absorbed
+        if unblockable:
+            block_absorbed = 0
+        else:
+            block_absorbed = min(self._block, amount)
+            self._block -= block_absorbed
         hp_lost = self.lose_hp(amount - block_absorbed, from_damage=True)
 
         # Reflect — 블록으로 막은 파워드 공격 피해를 공격자에게 반사

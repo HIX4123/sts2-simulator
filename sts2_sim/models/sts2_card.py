@@ -540,6 +540,20 @@ class Toxic(STS2Card):
         source.take_damage(5, source=None, powered=False)
 
 
+class Beckon(STS2Card):
+    """부름 — 1코스트, 효과 없음(사용 가능, 소모 아님). 턴 종료 시 손패에 있으면
+    6 피해, 블록 무시하되 Intangible 등 Cap 단계는 그대로 적용 (원본 Beckon.cs:
+    HpLossVar(6, Unblockable|Unpowered|Move) — SoulFysh BECKON_MOVE/GAZE_MOVE)."""
+    card_id = "beckon"
+    name = "Beckon"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = 1
+
+    def on_turn_end_in_hand(self, source, combat) -> None:
+        source.take_damage(6, source=None, powered=False, unblockable=True)
+
+
 class Void(STS2Card):
     """공허 — 사용 불가, 에테리얼, 드로우 시 에너지 -1 (Turbo)."""
     card_id = "void"
@@ -590,6 +604,7 @@ CARD_REGISTRY = {
     "void": Void,
     "infection": Infection,
     "toxic": Toxic,
+    "beckon": Beckon,
 }
 
 

@@ -207,6 +207,9 @@ class CombatState:
                 self.hand.append(card)
             elif to == "draw":
                 self.draw_pile.append(card)
+            elif to == "draw_random":  # CardPilePosition.Random 대응 (SoulFysh Beckon 등)
+                idx = self.rng.randrange(len(self.draw_pile) + 1)
+                self.draw_pile.insert(idx, card)
             else:
                 self.discard_pile.append(card)
             made.append(card)
@@ -241,6 +244,13 @@ class CombatState:
     def add_status_to_discard(self, card_id: str, count: int) -> None:
         """몬스터가 상태이상 카드를 버림 더미에 삽입 (Dazed/Slimed) — 생성 훅 미발동."""
         self.generate_card(card_id, count=count, creator_is_player=False)
+
+    def add_status_to_draw(self, card_id: str, count: int) -> None:
+        """몬스터가 상태이상 카드를 뽑을 더미의 무작위 위치에 삽입 (원본
+        CardPilePosition.Random 대응 — SoulFysh BECKON_MOVE) — 생성 훅 미발동.
+        draw_pile.append(맨 위/확정 다음 드로우)와 달리 매번 독립적으로 무작위
+        위치에 끼워 넣어 다음 드로우에 무조건 뽑히지 않도록 한다."""
+        self.generate_card(card_id, count=count, to="draw_random", creator_is_player=False)
 
     def get_card_cost(self, card: "STS2Card") -> int:
         """실효 비용: 파워(FreeAttack/Corruption)의 비용 수정 반영. X코스트는 0(최소)."""
@@ -437,6 +447,15 @@ class CombatState:
             self._trigger_doom()  # 적 턴 종료 시 Doom 즉사 (원본 BeforeSideTurnEnd)
             self.reap_deaths()    # Doom 처치 포함 사망 집계
             self.notify_player_powers("on_enemy_turn_end")  # Colossus 감쇠
+            # 원본 AfterSideTurnEnd(side==Enemy)는 소유자가 플레이어든 몬스터든
+            # 무관하게 통지된다 (예: SoulFysh가 자기 자신에게 건 Intangible도
+            # 적 턴 종료마다 감소해야 함) — 플레이어 파워 통지만으로는 몬스터가
+            # 스스로에게 건 파워가 영원히 감소하지 않는 버그가 생기므로 별도 통지.
+            for enemy in list(self.alive_enemies):
+                for power in list(enemy._powers.values()):
+                    hook = getattr(power, "on_enemy_turn_end", None)
+                    if hook:
+                        hook()
 
             if not self.alive_enemies:
                 return self._finish(True)

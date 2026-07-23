@@ -63,22 +63,40 @@ class RandomBranchState(MonsterState):
     """가중치 기반 무작위 분기 (디컴파일 RandomBranchState 대응).
 
     cannot_repeat=True인 분기는 직전 행동과 같으면 선택되지 않는다
-    (디컴파일 MoveRepeatType.CannotRepeat).
-    """
+    (디컴파일 MoveRepeatType.CannotRepeat — AddBranch(state, MoveRepeatType) 계열).
+    cooldown>0이면 최근 cooldown회의 무브 이력 안에 자신이 있으면 제외된다
+    (디컴파일 StateWeight.cooldown — AddBranch(state, int cooldown, MoveRepeatType)
+    3-인자 오버로드가 실제로 바인딩되는 대상. 예: Flyconid RAND의 "3"/"2"는
+    weight가 아니라 cooldown이며 세 분기 모두 base weight는 1로 동일하다).
+    max_repeats가 설정되면 최근 max_repeats회 연속 동일 분기가 나왔을 때만 제외된다
+    (디컴파일 MoveRepeatType.CanRepeatXTimes — AddBranch(state, int maxRepeats) 2-인자
+    오버로드가 실제로 바인딩되는 대상. 예: FossilStalker RAND의 "2"는 weight가 아니라
+    maxRepeats이며 세 분기 모두 base weight는 1로 동일하다).
+    모든 분기가 제외되면(쿨다운/반복제한 전부 소진) 원본과 동일하게 첫 번째로
+    등록된 분기로 폴백한다 (원본 GetNextState — 전체 weight합이 0이면 rng 결과와
+    무관하게 리스트의 첫 항목이 선택됨)."""
     def __init__(self, name: str):
         super().__init__(name)
-        self.branches: List[tuple] = []  # (state, weight, cannot_repeat)
+        self.branches: List[tuple] = []  # (state, weight, cannot_repeat, cooldown, max_repeats)
 
-    def add_branch(self, state: MoveState, weight: int = 1, cannot_repeat: bool = False):
-        self.branches.append((state, weight, cannot_repeat))
+    def add_branch(self, state: MoveState, weight: int = 1, cannot_repeat: bool = False,
+                   cooldown: int = 0, max_repeats: Optional[int] = None):
+        self.branches.append((state, weight, cannot_repeat, cooldown, max_repeats))
 
-    def resolve(self, rng: random.Random, last_move_name: Optional[str]) -> MoveState:
-        candidates = [
-            (s, w) for s, w, cr in self.branches
-            if not (cr and s.name == last_move_name)
-        ]
+    def resolve(self, rng: random.Random, last_move_name: Optional[str],
+                history: Optional[List[str]] = None) -> MoveState:
+        history = history or []
+        candidates = []
+        for s, w, cr, cd, mr in self.branches:
+            if cr and s.name == last_move_name:
+                continue
+            if mr is not None and len(history) >= mr and all(h == s.name for h in history[-mr:]):
+                continue
+            if cd > 0 and s.name in history[-cd:]:
+                continue
+            candidates.append((s, w))
         if not candidates:
-            candidates = [(s, w) for s, w, _ in self.branches]
+            return self.branches[0][0]
         states = [s for s, _ in candidates]
         weights = [w for _, w in candidates]
         return rng.choices(states, weights=weights, k=1)[0]
@@ -96,11 +114,12 @@ class MonsterMoveStateMachine:
         self.current_state: MonsterState = initial_state
         self.rng: random.Random = random.Random()
         self._last_move_name: Optional[str] = None
+        self.history: List[str] = []  # 실행된 MoveState 이름 이력 (cooldown/max_repeats용)
 
     def resolve_initial(self) -> None:
         """초기 상태가 RandomBranchState면 현재 rng로 해석."""
         if isinstance(self.current_state, RandomBranchState):
-            self.current_state = self.current_state.resolve(self.rng, None)
+            self.current_state = self.current_state.resolve(self.rng, None, self.history)
 
     def get_current_intent(self) -> Intent:
         return self.current_state.intent
@@ -112,11 +131,12 @@ class MonsterMoveStateMachine:
         if self.current_state.execute:
             self.current_state.execute(targets)
         self._last_move_name = self.current_state.name
+        self.history.append(self.current_state.name)
 
     def advance_state(self) -> None:
         nxt = self.current_state.follow_up_state
         while isinstance(nxt, RandomBranchState):
-            nxt = nxt.resolve(self.rng, self._last_move_name)
+            nxt = nxt.resolve(self.rng, self._last_move_name, self.history)
         if nxt is not None:
             self.current_state = nxt
 
@@ -177,19 +197,39 @@ class MonsterModel(Creature):
         return Intent(IntentType.UNKNOWN)
 
     def take_turn(self, targets: List[Creature]) -> None:
-        """현재 행동 실행 후 다음 상태로 전환."""
+        """현재 행동 실행 후 다음 상태로 전환.
+        무브 실행 직후 flush_landed_attacks를 통지해(SuckPower 등) 같은 다단히트
+        무브 안에서 앞선 히트로 얻은 파워가 뒤 히트에 소급 반영되지 않게 한다
+        (원본 AfterAttack이 공격 커맨드 전체 종료 후 1회만 발동하는 것과 대응)."""
         if self._move_state_machine:
             self._move_state_machine.execute_move(targets)
+            for p in list(self._powers.values()):
+                flush = getattr(p, "flush_landed_attacks", None)
+                if flush:
+                    flush()
             self._move_state_machine.advance_state()
 
     def attack(self, target: Creature, base_damage: int) -> None:
-        """공격 파이프라인 (자신의 Strength/Weak 반영)."""
-        target.take_damage(self.compute_attack_damage(base_damage), source=self)
+        """공격 파이프라인 (자신의 Strength/Weak 반영).
+        피해가 블록을 관통하면(hp_lost>0) 자신의 파워에 on_landed_attack 통지
+        (원본 SuckPower.AfterAttack — FossilStalker 등 자기 파워드 공격 적중 트리거)."""
+        result = target.take_damage(self.compute_attack_damage(base_damage), source=self)
+        if result.get("hp_lost", 0) > 0:
+            for p in list(self._powers.values()):
+                hook = getattr(p, "on_landed_attack", None)
+                if hook:
+                    hook()
 
     def add_status_to_player_discard(self, card_id: str, count: int) -> None:
         """플레이어 버림 더미에 상태이상 카드 삽입 (Dazed/Slimed)."""
         if self.combat_state and hasattr(self.combat_state, "add_status_to_discard"):
             self.combat_state.add_status_to_discard(card_id, count)
+
+    def add_status_to_player_draw(self, card_id: str, count: int) -> None:
+        """플레이어 뽑을 더미의 무작위 위치에 상태이상 카드 삽입 (SoulFysh BECKON_MOVE —
+        원본 CardPilePosition.Random 대응)."""
+        if self.combat_state and hasattr(self.combat_state, "add_status_to_draw"):
+            self.combat_state.add_status_to_draw(card_id, count)
 
     def escape(self) -> None:
         """전투에서 도주 (FatGremlin 등)."""

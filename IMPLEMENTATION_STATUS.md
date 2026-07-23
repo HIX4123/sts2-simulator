@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 47종 | 상태 머신 AI, 실제 HP/데미지 |
-| 인카운터 | 25종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
+| 몬스터 | 55종 | 상태 머신 AI, 실제 HP/데미지 (Act1 보스 SoulFysh 포함) |
+| 인카운터 | 33종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 502종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 161종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
+| 파워 | 163종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 13개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 15개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 47종
+## 👹 몬스터 55종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -73,11 +73,18 @@ FuzzyWurmCrawler, Nibbit, Seapunk, TurretOperator, PunchConstruct (7a) ·
 DevotedSculptor, KinPriest, Toadpole, SludgeSpinner, HauntedShip (7b) ·
 Wriggler, Myte, FrogKnight (7c)
 
-특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce), 조건 분기(LivingShield,
-FrogKnight HP 절반), 도주(FatGremlin/SneakyGremlin 대기→행동), 상태이상 삽입(Dazed/Slimed),
-Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍 버그 수정), Artifact 디버프 무효,
-Plating 감쇠 블록, Tangled 공격 봉쇄, 슬롯 의존 초기 행동(Nibbit/Toadpole/Myte/Wriggler/
-PunchConstruct — 생성자 플래그로 인카운터 슬롯 위치 반영).
+**Phase 6k 배치8 (monsters_batch8.py):** MysteriousKnight, Flyconid,
+ShrinkerBeetle, LouseProgenitor, SpinyToad, Byrdonis, FossilStalker,
+SoulFysh(Act1 보스)
+
+특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
+**max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
+FrogKnight HP 절반), 도주(FatGremlin/SneakyGremlin 대기→행동), 상태이상 삽입(Dazed/
+Slimed/Infection/Toxic/Beckon), Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍
+버그 수정), Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄, 슬롯 의존
+초기 행동(Nibbit/Toadpole/Myte/Wriggler/PunchConstruct — 생성자 플래그로 인카운터
+슬롯 위치 반영), 다단히트 파워 소급반영 방지(SuckPower.flush_landed_attacks —
+Phase 6k), 몬스터 자기부여 파워의 적턴종료 감쇠(Intangible — Phase 6k).
 
 ## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
 
@@ -412,21 +419,136 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
   fresh 적용만 발생"으로 실측 도달 불가능함이 확인되어 기각(확정 버그
   0건). encounters.py는 이슈 제기 자체 없음
 
-## 🔬 생성 방법론 (Phase 6a/6j)
+## ✅ Phase 6k — 몬스터 확대 2차 · 배치8
+
+몬스터 잔여 ~74종의 두 번째 배치(8종, Act1 보스 SoulFysh 포함). 신규 파워 3종
+(ShrinkPower/TerritorialPower/SuckPower) + 상태이상 카드 1종(Beckon) 동반.
+
+- **`monsters_batch8.py`**: MysteriousKnight(FlailKnight 상속, 신규 파워
+  불필요), Flyconid(취약/허약/공격 3분기, 신규 파워 불필요), ShrinkerBeetle
+  (신규 `ShrinkPower`), LouseProgenitor(기존 `CurlUpPower` 재사용 — Phase 6k
+  이전에 다른 목적으로 미리 이식돼 있었으나 어떤 몬스터에도 연결 안 된
+  상태였음), SpinyToad(가시 토글, 신규 파워 불필요), Byrdonis(엘리트, 신규
+  `TerritorialPower`), FossilStalker(신규 `SuckPower`), SoulFysh(Act1 보스,
+  신규 상태이상 카드 `Beckon`)
+- **`jaxfruit_normal` 원본 구성 복원**: Flyconid 미이식 시절 SnappingJaxfruit
+  ×2로 대체해뒀던 것을 원본 구성(`SnappingJaxfruit`+`Flyconid`)으로 교체
+- **`encounters.py`**: 신규 8개 인카운터 배선(원본 `GenerateMonsters()`
+  구성 그대로 — Weak/Normal/Elite/Boss RoomType은 전투 시뮬레이터가 다루지
+  않는 메타 정보라 미모델링, 원본에서도 RoomType/IsWeak은 전투 판정 코드와
+  무관함을 확인)
+
+### 적대적 검증 — 확정 버그 9건 (Phase 6j 이후 가장 많은 발견 건수)
+
+Phase 6j와 동일하게 review→verify 워크플로우로 8개 항목(몬스터 7종+파워
+조합/보스/인카운터)을 적대 검증했다. 세션 한도로 verify 단계 일부가
+실패해("no verdict") 자동 기각 처리된 항목들은 전부 내가 직접 원본
+`decompiled/`와 재대조해 별도로 판정했다. 그 결과 확정된 버그는 다음 9건:
+
+1. **Flyconid RAND/INITIAL 분기 가중치 오독** — 원본 `RandomBranchState.cs`를
+   직접 읽고 확인: `AddBranch(state, int, MoveRepeatType)` 3-인자 호출의
+   두 번째 int 인자는 오버로드 결정 규칙상(C#은 리터럴 0만 enum 암묵 변환
+   허용) weight가 아니라 **cooldown**에 바인딩되고, weight는 해당 오버로드
+   내부에서 하드코딩된 1f다. 즉 VULNERABLE_SPORES_MOVE/FRAIL_SPORES_MOVE/
+   SMASH_MOVE 세 분기의 실제 base weight는 3:2:1이 아니라 균등 1:1:1이며,
+   대신 VULNERABLE_SPORES_MOVE는 최근 3무브, FRAIL_SPORES_MOVE는 최근
+   2무브 이력에 자신이 없어야 선택 가능한 cooldown 게이트가 걸린다.
+   `RandomBranchState`/`MonsterMoveStateMachine`(`sts2_monster.py`)에
+   `cooldown`/이력(`history`) 추적을 새로 추가해 재현, 전멸 시(세 분기 모두
+   배제) 첫 등록 분기로 폴백하는 원본 동작도 함께 반영
+2. **FossilStalker RAND 분기 동일 오독** — 위 발견 직후 같은 파일을 재확인해
+   직접 찾음(적대적 검증이 아니라 사후 자체 재검토로 발견). 2-인자
+   `AddBranch(state, int)`의 int는 weight가 아니라 **maxRepeats**
+   (`MoveRepeatType.CanRepeatXTimes`)로 바인딩됨 — 세 분기 균등 1:1:1이되
+   동일 분기 2연속까지 허용, 3연속은 금지. `add_branch`에 `max_repeats`
+   파라미터 추가로 재현
+3. **SoulFysh 자기부여 Intangible 영구 누적** — 엔진 버그. `combat.py`가
+   `on_enemy_turn_end`를 `notify_player_powers`로 플레이어 파워에만
+   통지해, 몬스터가 스스로에게 건 파워(Intangible 등)는 절대 감소하지
+   않았다. SoulFysh의 FADE_MOVE(5턴 순환마다 1회)가 반복될 때마다
+   Intangible이 2→4→6...으로 누적되어 약 4번째 자기 턴 이후 사실상
+   무적이 되고 보스전이 불가능해짐(재현: GreedyPolicy로 실행 시 플레이어가
+   7턴째 사망). `combat.py`의 몬스터 턴 루프 끝에 `alive_enemies`에도
+   동일 통지를 추가해 수정
+4. **FossilStalker Suck 파워 조기 반영** — `LASH_MOVE`(2연타) 안에서 첫
+   히트로 얻은 힘이 즉시 두 번째 히트 데미지 계산에 반영되어 총딜 9(원본은
+   6)가 나오는 버그. 원본 `AttackCommand.Execute()`는 다단히트를 전부
+   처리한 뒤 `AfterAttack`을 1회만 호출하므로 힘 부여는 해당 무브의 모든
+   히트가 끝난 뒤에만 일어난다 — `SuckPower`에 `on_landed_attack`(카운트만)
+   /`flush_landed_attacks`(무브 종료 시 일괄 적용) 분리, `MonsterModel.
+   take_turn`이 무브 실행 직후 flush를 통지하도록 엔진 확장
+5. **LouseProgenitor 블록 획득 powered 플래그 반전** — `CURL_AND_GROW_MOVE`의
+   블록 14는 원본이 `ValueProp.Move`(파워드)인데 포트는 `powered=False`로
+   구현해 Frail 배율 우회(코드베이스 전체에서 유일한 사례) — `powered=True`
+   (기본값)로 수정
+6. **Thorns/FlameBarrier/CurlUpPower의 IsPoweredAttack 게이트 누락** —
+   SpinyToad 가시 토글 검증 중 발견. 원본은 셋 다 `IsPoweredAttack()`이
+   아니면(오브/파워 반응형 Unpowered 피해) 반격/블록 획득을 하지 않는데,
+   포트는 `on_take_damage`(게이트 없음)로 구현되어 있었음 — 이미 존재하던
+   `on_take_damage_powered(attacker, hp_lost, powered)` 훅으로 교체해 세
+   파워 모두 게이트 추가 (SpinyToad 고유 결함이 아니라 반격형 파워 공통
+   이식 누락)
+7. **SoulFysh Beckon 뽑을더미 삽입이 "무작위"가 아니라 "다음 드로우 확정"**
+   — `add_status_to_player_draw`가 `draw_pile.append`를 썼는데, 이 엔진의
+   `draw_cards`/`auto_play_from_draw_pile`은 전부 `draw_pile.pop()`(같은
+   쪽 끝)으로 뽑으므로 append는 사실 "다음 드로우 확정"(엔진 자체가
+   `_settle_card`에서 이 연산을 `draw_top`이라 명명)이지 무작위 위치가
+   아니었다. 원본 `CardPilePosition.Random`에 맞춰 `combat.py`에
+   `draw_random`(무작위 인덱스 `insert`, 기존 TheBall 카드의 방식과 동일
+   패턴) 모드를 추가하고 `add_status_to_draw`가 이를 쓰도록 수정
+8. **Beckon의 Unblockable 자해가 Intangible Cap 우회** — `lose_hp` 직접
+   호출은 블록 우회(Unblockable)는 맞게 구현했지만 `take_damage`의 Cap
+   단계(Intangible의 무조건 1 제한)를 완전히 건너뛰어, 플레이어가
+   Intangible을 보유한 채 Beckon 자해를 맞아도 6 피해가 그대로 들어갔다 —
+   `Creature.take_damage`에 `unblockable` 인자를 추가해(블록만 우회, Cap은
+   유지) `Beckon.on_turn_end_in_hand`가 이를 쓰도록 수정
+9. **(부수 발견, 관련 파워 3종에 걸친 시스템적 이슈) outgoing 데미지
+   파이프라인 Additive/Multiplicative 미분리** — 원본 `Hook.
+   ModifyDamageInternal`(디컴파일 `Hook.cs`)은 Additive(Strength/Vigor/
+   TempStrength) 단계를 전부 적용한 뒤 Multiplicative(Weak/Shrink/
+   DoubleDamage) 단계를 적용하는 두 단계로 엄격히 분리한다. 포트의
+   `compute_attack_damage`는 파워 딕셔너리 삽입 순서대로 한 루프에서
+   섞어 처리해, Shrink를 먼저 걸고 나중에 힘을 얻는 통상 순서와 그
+   반대 순서의 최종 데미지가 달라지는 문제가 있었다(이미 있던 Weak도
+   동일하게 노출되던 이슈, ShrinkPower 검증 중 발견) — `compute_attack_
+   damage`를 `damage_stage`(additive/multiplicative) 기준 2단계로 분리해
+   `Creature.take_damage`의 기존 Multiplicative→Cap 분리 패턴과 대칭을
+   맞춤
+
+기각된 항목(현재 코드베이스에서 도달 불가능하거나 연출 전용으로 확인):
+인카운터 8종 배선 전수 대조 0건, jaxfruit_normal 배치 확인 0건,
+MysteriousKnight의 super()/decimal 변환 관련 4건(전부 죽은 코드 경로),
+ShrinkPower의 applier 사망 시 제거(단독 인카운터라 관측 불가), Byrdonis의
+applier 인자 누락(무해), FossilStalker의 펫 제외/그룹핑 로직(펫 시스템
+자체가 없어 무해), SoulFysh의 targets 순회 생략/GAZE_MOVE Intent 표시
+누락/Vulnerable applier 누락(전부 단일플레이어 엔진에서 무관측), LouseProgenitor
+의 Curled 플래그 미이식(연출 전용, 재확인 완료).
+
+- 회귀 테스트: 신규 `test_sts2_phase6k.py`(20개) — 위 9건 버그 전부 재발
+  방지 테스트 포함(Flyconid 균등가중치+쿨다운+폴백, FossilStalker 3연속
+  금지, LouseProgenitor Frail-블록, SoulFysh Intangible 감쇠, Beckon+
+  Intangible Cap, Thorns Unpowered 무반격 등), 15스위트 전체 통과
+
+## 🔬 생성 방법론 (Phase 6a/6j/6k)
 
 몬스터는 멀티에이전트 파이프라인으로 이식:
 1. **이식 에이전트** — 디컴파일 .cs와 기존 패턴을 읽고 Python 클래스 생성
 2. **검증 에이전트** — 원본과 수치/상태그래프 적대 대조 (Phase 6a: LeafSlimeS
    시드 재현성 버그, SpectralKnight CanRepeatXTimes 전개 오류 / Phase 6j:
-   Ritual 첫 틱 스킵 누락)
-3. **수동 대조** — 세션 한도로 미검증된 항목 또는 전체를 원본 소스와 직접
-   재대조 (Phase 6j는 13종 전부 재대조, 3건의 자체 테스트 저작 버그도
-   근본 원인 분석으로 수정 — Nibbit setup_for_combat 누락, SludgeSpinner
-   advance_state 직접 호출로 인한 cannot_repeat 무력화, FrogKnight
-   BeetleCharge 데미지의 Strength 스택 반영 누락)
+   Ritual 첫 틱 스킵 누락 / Phase 6k: 위 9건, 특히 `RandomBranchState`의
+   `AddBranch` 오버로드 오독이 서로 다른 두 몬스터(Flyconid/FossilStalker)
+   에서 각기 다른 형태로 재발한 것이 인상적 — C# 오버로드 결정 규칙을
+   추론이 아니라 실제 원본 클래스 정의를 직접 읽어 확정해야 함을 재확인)
+3. **수동 대조** — 세션 한도로 미검증된 항목("no verdict") 또는 전체를
+   원본 소스와 직접 재대조 (Phase 6j는 13종 전부 재대조, 3건의 자체 테스트
+   저작 버그도 근본 원인 분석으로 수정 / Phase 6k는 세션 한도로 verify
+   단계 절반 가량이 실패했으나 자동 기각으로 넘기지 않고 review 단계의
+   원본 findings를 전부 다시 읽어 하나씩 재검증 — 그 결과 confirmed 5건
+   외에 추가로 4건을 더 확정했다)
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6j+ 참조 — 몬스터 잔여 ~74종(보스/다체 연동 포함),
-렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage), Ascension,
-실제 맵 그래프.
+ROADMAP.md의 Phase 6k+ 참조 — 몬스터 잔여 ~66종(보스/다체 연동 포함,
+Possess 계열 신규 파워가 필요한 TheLost/TheForgotten/TheInsatiable 등),
+렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage 외 Phase 6k
+정찰로 확인된 28종 이상), Ascension, 실제 맵 그래프.
