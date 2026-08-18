@@ -55,10 +55,8 @@ def test_new_monster_stats():
 
 
 def test_plating_power():
-    """Plating: 최초 부여 시 즉시 블록 + 턴 종료마다 블록 획득, 소유자 턴 시작마다
-    스택 감소(피해 무관, 라운드1 제외)
-    (디컴파일 PlatingPower.AfterSideTurnStart — TurnNumber/RoundNumber != 1,
-    BeforeSideTurnStart(round1)의 개전 즉시 지급은 Phase 6l에서 반영)."""
+    """Plating: 턴 종료 블록 획득, 소유자 턴 시작마다 스택 감소(피해 무관, 라운드1 제외)
+    (디컴파일 PlatingPower.AfterSideTurnStart — TurnNumber/RoundNumber != 1)."""
     print("\n=== Plating 파워 ===\n")
 
     class _FakeCombat:
@@ -67,20 +65,24 @@ def test_plating_power():
     clam = SewerClam()
     clam.setup_for_combat(None)
     assert clam.get_power_amount("plating") == 8, "개전 Plating 8 미적용"
-    assert clam.block == 8, f"개전 즉시 블록 미지급: {clam.block}"
+    # 원본 BeforeSideTurnStart(round1) — 개전 즉시(라운드1 플레이어 턴 시작 전) 블록 지급
+    # (Plating.apply() 수정, Phase 6l). 실제 턴 루프에서는 이 블록이 자신의 턴 시작 시
+    # 리셋된 뒤 on_turn_end가 다시 채우므로, 아래 단위 테스트도 그 리셋을 재현한다.
+    assert clam.block == 8, f"개전 즉시 블록 지급 실패: {clam.block}"
     fake_combat = _FakeCombat()
     clam.combat_state = fake_combat
 
     plating = clam._powers["plating"]
+    clam._block = 0  # 자신의 턴 시작 시 블록 리셋 재현
     plating.on_turn_end()
-    assert clam.block == 16, f"턴 종료 블록 실패: {clam.block}"
+    assert clam.block == 8, f"턴 종료 블록 실패: {clam.block}"
 
     # 라운드 1(개전 시 이미 보유)은 감소 제외
     plating.on_turn_start()
     assert clam.get_power_amount("plating") == 8, "라운드1 감소 제외 실패"
 
     # 피해는 스택에 영향 없음 (원본은 피격 기반 감소가 아님)
-    clam.take_damage(10, source=None)  # 블록 16이 전부 흡수
+    clam.take_damage(10, source=None)  # 8 블록 + 2 관통
     assert clam.get_power_amount("plating") == 8, "피해로 감소해선 안 됨"
 
     # 다음 턴(라운드2) 시작 시 1 감소
