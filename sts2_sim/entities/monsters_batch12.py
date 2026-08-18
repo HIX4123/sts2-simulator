@@ -208,9 +208,113 @@ class TwoTailedRat(MonsterModel):
             rat.call_for_backup_count = shared
 
 
+class GremlinMerc(MonsterModel):
+    """그렘린 머크 — HP 47~49. 공격할 때마다 플레이어의 골드를 훔치고,
+    죽으면 동료 둘을 불러내며 훔친 골드를 도주하는 뚱보 그렘린에게 넘긴다.
+
+    개전 파워:
+      - SurprisePower(1) — 사망 시 SneakyGremlin("sneaky") + FatGremlin("fat") 소환
+      - ThieveryPower(20) — 플레이어 대상, 공격 무브마다 최대 20골드 절취
+
+    원본(GremlinMerc.cs) 그래프: GIMME(7딜×2) → DOUBLE_SMASH(6딜×2 + 약화 2) →
+    HEHE(8딜 + 자신 힘 +2) → GIMME → ... (고정 3순환). 세 무브 모두 공격 직후
+    Steal()을 호출한다."""
+    monster_id = "gremlin_merc"
+    title = "Gremlin Merc"
+
+    THIEVERY_AMOUNT = 20
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 47
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 49
+
+    @property
+    def gimme_damage(self) -> int:
+        return 7
+
+    @property
+    def gimme_repeat(self) -> int:
+        return 2
+
+    @property
+    def double_smash_damage(self) -> int:
+        return 6
+
+    @property
+    def double_smash_repeat(self) -> int:
+        return 2
+
+    @property
+    def double_smash_weak(self) -> int:
+        return 2
+
+    @property
+    def hehe_damage(self) -> int:
+        return 8
+
+    @property
+    def hehe_strength_gain(self) -> int:
+        return 2
+
+    def after_added_to_room(self) -> None:
+        from sts2_sim.models.sts2_power import SurprisePower, ThieveryPower
+        self.apply_power(SurprisePower(1))
+        thievery = ThieveryPower(self.THIEVERY_AMOUNT)
+        combat = self.combat_state
+        thievery.target = combat.player if combat is not None else None
+        self.apply_power(thievery)
+
+    def _steal(self) -> None:
+        thievery = self._powers.get("thievery")
+        if thievery is not None:
+            thievery.steal()
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        gimme = MoveState("GIMME_MOVE", self._gimme_move,
+                          Intent(IntentType.ATTACK, damage=self.gimme_damage,
+                                 times=self.gimme_repeat))
+        smash = MoveState("DOUBLE_SMASH_MOVE", self._double_smash_move,
+                          Intent(IntentType.ATTACK_DEBUFF, damage=self.double_smash_damage,
+                                 times=self.double_smash_repeat))
+        hehe = MoveState("HEHE_MOVE", self._hehe_move,
+                         Intent(IntentType.ATTACK_BUFF, damage=self.hehe_damage))
+        gimme.follow_up_state = smash
+        smash.follow_up_state = hehe
+        hehe.follow_up_state = gimme
+        return MonsterMoveStateMachine([gimme, smash, hehe], gimme)
+
+    def _gimme_move(self, targets: List[Creature]) -> None:
+        for _ in range(self.gimme_repeat):
+            for target in targets:
+                self.attack(target, self.gimme_damage)
+        self._steal()
+
+    def _double_smash_move(self, targets: List[Creature]) -> None:
+        from sts2_sim.models.sts2_power import Weak
+        for _ in range(self.double_smash_repeat):
+            for target in targets:
+                self.attack(target, self.double_smash_damage)
+        self._steal()
+        for target in targets:
+            if hasattr(target, "apply_power"):
+                target.apply_power(Weak(self.double_smash_weak), applier=self)
+
+    def _hehe_move(self, targets: List[Creature]) -> None:
+        from sts2_sim.models.sts2_power import Strength
+        for target in targets:
+            self.attack(target, self.hehe_damage)
+        self._steal()
+        self.apply_power(Strength(self.hehe_strength_gain))
+
+
 BATCH12_MONSTERS = {
     "phrog_parasite": PhrogParasite,
     "two_tailed_rat": TwoTailedRat,
+    "gremlin_merc": GremlinMerc,
 }
 
 MONSTER_REGISTRY.update(BATCH12_MONSTERS)

@@ -3040,6 +3040,94 @@ class InfestedPower(STS2Power):
         return True
 
 
+class ThieveryPower(STS2Power):
+    """도둑질 — 공격이 적중할 때마다(원본은 무브 안에서 명시 호출) 대상 플레이어의
+    골드를 amount만큼 훔쳐 누적한다 (원본 ThieveryPower.Steal — 보유 골드보다
+    많이 훔치지 못한다). 훔친 총액은 stolen_gold에 쌓이며, GremlinMerc가 죽을 때
+    SurprisePower가 이를 FatGremlin에게 넘긴다."""
+    power_id = "thievery"
+    name = "Thievery"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.stolen_gold = 0
+        self.target: Optional["Creature"] = None
+
+    def steal(self) -> int:
+        """대상에게서 실제로 훔친 금액 반환."""
+        target = self.target
+        if target is None or target.is_dead:
+            return 0
+        character = getattr(target, "character", None)
+        if character is None or character.gold <= 0:
+            return 0
+        amount = min(self.amount, character.gold)
+        character.gold -= amount
+        self.stolen_gold += amount
+        return amount
+
+
+class HeistPower(STS2Power):
+    """강도 — 보유자가 죽으면 훔쳐간 골드를 플레이어에게 되돌려준다
+    (원본 HeistPower.BeforeDeath — CombatRoom에 GoldReward를 추가하는 형태).
+    이 시뮬레이터는 전투 보상 파이프라인이 축소돼 있어 사망 시점에 캐릭터
+    골드로 바로 환급한다 — 도주한 FatGremlin은 죽지 않으므로 골드도 돌아오지
+    않는다는 원본의 핵심 결과는 동일하다."""
+    power_id = "heist"
+    name = "Heist"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.target: Optional["Creature"] = None
+
+    def on_any_death(self, dead) -> None:
+        if dead is not self.owner or self.amount <= 0:
+            return
+        target = self.target
+        character = getattr(target, "character", None) if target else None
+        if character is not None:
+            character.gain_gold(self.amount)
+        self.amount = 0
+
+
+class SurprisePower(STS2Power):
+    """기습 — 보유자가 죽으면 SneakyGremlin과 FatGremlin이 튀어나오고,
+    훔쳐둔 골드가 FatGremlin의 HeistPower로 옮겨간다 (원본 SurprisePower.AfterDeath).
+    FatGremlin은 다음 턴에 도주하므로, 잡지 못하면 골드를 영영 잃는다.
+
+    원본 ShouldStopCombatFromEnding()=true — InfestedPower와 같은 이유로
+    소환 직후 스스로를 제거해 승리가 영구 차단되지 않게 한다."""
+    power_id = "surprise"
+    name = "Surprise"
+    is_debuff = False
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None or dead is not owner:
+            return
+        combat = getattr(owner, "combat_state", None)
+        self.remove()
+        if combat is None:
+            return
+        from sts2_sim.entities.sts2_monster import FatGremlin
+        from sts2_sim.entities.monsters_extra import SneakyGremlin
+
+        combat.add_monster(SneakyGremlin(), slot_name="sneaky")
+        fat = combat.add_monster(FatGremlin(), slot_name="fat")
+
+        thievery = owner._powers.get("thievery")
+        stolen = getattr(thievery, "stolen_gold", 0) if thievery else 0
+        if stolen > 0:
+            heist = HeistPower(stolen)
+            heist.target = getattr(thievery, "target", None)
+            fat.apply_power(heist, applier=owner)
+
+    def should_stop_combat_from_ending(self) -> bool:
+        return True
+
+
 # ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
@@ -3221,6 +3309,10 @@ POWER_REGISTRY = {
     "paper_cuts": PaperCutsPower,
     # Phase 6o
     "infested": InfestedPower,
+    # Phase 6q
+    "thievery": ThieveryPower,
+    "heist": HeistPower,
+    "surprise": SurprisePower,
 }
 
 

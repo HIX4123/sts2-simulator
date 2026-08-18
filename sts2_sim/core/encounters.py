@@ -42,7 +42,7 @@ from sts2_sim.entities.monsters_batch11 import (
     SlimedBerserker, SlitheringStrangler, Exoskeleton, HunterKiller,
     MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting, Vantom,
 )
-from sts2_sim.entities.monsters_batch12 import PhrogParasite, TwoTailedRat
+from sts2_sim.entities.monsters_batch12 import GremlinMerc, PhrogParasite, TwoTailedRat
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -180,7 +180,7 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # FabricatorNormal: Fabricator + 봇 소환 → 봇 2종만
     "bots_normal": lambda rng: [Stabbot(), Zapbot()],
     "jaxfruit_normal": lambda rng: [SnappingJaxfruit(), Flyconid()],
-    # GremlinMercNormal: GremlinMerc(미이식) ×2 + Fat/Sneaky → 그렘린 2종만
+    # 원본에 대응 인카운터가 없는 자체 구성 (난이도 풀 EASY용으로 유지)
     "gremlins_weak": lambda rng: [SneakyGremlin(), FatGremlin()],
     # ── Phase 6j 배치1 (원본 구성 그대로) ──
     "fuzzy_wurm_crawler_weak": lambda rng: [FuzzyWurmCrawler()],
@@ -233,6 +233,9 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # 나머지 4슬롯은 사망 시 InfestedPower가 Wriggler로 채운다.
     "phrog_parasite_elite": lambda rng: [_slotted(PhrogParasite(), "phrog")],
     "two_tailed_rats_normal": _two_tailed_rats,
+    # GremlinMercNormal: 시작은 머크 1마리. 죽으면 SurprisePower가
+    # sneaky/fat 슬롯을 SneakyGremlin/FatGremlin으로 채운다.
+    "gremlin_merc_normal": lambda rng: [_slotted(GremlinMerc(), "merc")],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류
@@ -251,6 +254,7 @@ NORMAL_POOL = EASY_POOL + MEDIUM_POOL
 ENCOUNTER_SLOTS: Dict[str, List[str]] = {
     "phrog_parasite_elite": ["phrog", "wriggler1", "wriggler2", "wriggler3", "wriggler4"],
     "two_tailed_rats_normal": ["first", "second", "third", "fourth", "fifth"],
+    "gremlin_merc_normal": ["merc", "sneaky", "fat"],
     "exoskeletons_normal": ["first", "second", "third", "fourth"],
     "exoskeletons_weak": ["first", "second", "third"],
 }
