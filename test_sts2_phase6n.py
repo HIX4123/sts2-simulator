@@ -58,6 +58,29 @@ def test_registry_and_encounters():
     print("✅ 몬스터 9종 + 파워 6종 + 인카운터 11종 등록 확인")
 
 
+def test_package_import_alone_populates_monster_registry():
+    """`import sts2_sim`만으로 몬스터 배치가 MONSTER_REGISTRY에 등록되어야 한다.
+
+    이 스위트의 다른 테스트는 core.encounters를 임포트하므로 배치 모듈이
+    간접 로드되어 문제를 가리지만, encounters를 거치지 않는 소비자
+    (create_monster 직접 호출)는 조용히 None을 받는다 — 실제로 배치 모듈이
+    어디서도 임포트되지 않아 기본 17종만 등록돼 있던 버그의 재발 방지."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sts2_sim;"
+        "from sts2_sim.entities.sts2_monster import MONSTER_REGISTRY, create_monster;"
+        "print(len(MONSTER_REGISTRY), type(create_monster('exoskeleton')).__name__)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.returncode == 0, f"임포트 실패: {out.stderr}"
+    count, name = out.stdout.split()
+    assert int(count) >= 70, f"패키지 임포트만으로 등록된 몬스터가 부족: {count}"
+    assert name == "Exoskeleton", f"create_monster('exoskeleton') 실패: {name}"
+    print("✅ import sts2_sim 단독으로 몬스터 배치 등록 확인")
+
+
 def test_hp_ranges():
     """디컴파일 MinInitialHp/MaxInitialHp(Ascension 미적용) 정확히 일치."""
     expected = {
@@ -591,6 +614,7 @@ def test_seeded_smoke():
 def main():
     print("🧪 STS2 Phase 6n 통합 테스트\n")
     test_registry_and_encounters()
+    test_package_import_alone_populates_monster_registry()
     test_hp_ranges()
     test_slimed_berserker_fixed_cycle()
     test_constrict_self_damage_and_applier_death_removal()
