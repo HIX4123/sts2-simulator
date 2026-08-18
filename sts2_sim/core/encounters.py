@@ -42,6 +42,7 @@ from sts2_sim.entities.monsters_batch11 import (
     SlimedBerserker, SlitheringStrangler, Exoskeleton, HunterKiller,
     MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting, Vantom,
 )
+from sts2_sim.entities.monsters_batch12 import PhrogParasite
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -101,6 +102,12 @@ def _phantasmal_gardeners(rng: random.Random) -> List[MonsterModel]:
     for gardener, slot in zip(gardeners, ("first", "second", "third", "fourth")):
         gardener.slot_name = slot
     return gardeners
+
+
+def _slotted(monster: MonsterModel, slot_name: str) -> MonsterModel:
+    """슬롯 이름을 부여해 그대로 반환 (lambda 인카운터에서 쓰기 위한 헬퍼)."""
+    monster.slot_name = slot_name
+    return monster
 
 
 def _exoskeletons(rng: random.Random, count: int) -> List[MonsterModel]:
@@ -210,6 +217,10 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     "scrolls_of_biting_normal": lambda rng: _scrolls_of_biting(rng, 4),
     "scrolls_of_biting_weak": lambda rng: _scrolls_of_biting(rng, 3),
     "vantom_boss": lambda rng: [Vantom()],
+    # ── Phase 6o 배치12 (전투 중 소환) ──
+    # PhrogParasiteElite: 슬롯 phrog + wriggler1~4. 시작은 PhrogParasite 1마리뿐이고
+    # 나머지 4슬롯은 사망 시 InfestedPower가 Wriggler로 채운다.
+    "phrog_parasite_elite": lambda rng: [_slotted(PhrogParasite(), "phrog")],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

@@ -71,6 +71,7 @@ class CombatState:
         self.cards_played_this_combat = 0     # GoldAxe (Colorless) — 전투 전체 누적
         self.verbose = False                  # --verbose — 턴/카드/피격 단위 상세 로그
         self.log: List[str] = []              # verbose=True일 때만 누적
+        self._combat_over = False             # 종료 후 전투 중 소환 차단 (CreatureCmd.Add의 IsLiveCombat)
         self._card_effect_active = False      # NoBlockP — card.use() 실행 구간에서만 True
                                                # (원본 CreatureCmd.GainBlock의 cardSource 대응)
 
@@ -490,9 +491,23 @@ class CombatState:
                 enemy._current_hp = 0
 
     def _combat_is_won(self) -> bool:
-        """사망 훅의 동기 부활을 먼저 수습한 뒤 승리를 판정한다."""
+        """사망 훅의 동기 부활·소환을 먼저 수습한 뒤 승리를 판정한다.
+
+        reap_deaths가 사망 훅을 돌리므로 부활(SteamEruption)이나 소환
+        (InfestedPower의 Wriggler 4마리)은 이 시점에 이미 반영돼 있다.
+        추가로 원본 PowerModel.ShouldStopCombatFromEnding을 그대로 존중해,
+        해당 파워를 가진 쪽이 남아 있으면 적이 전멸해 보여도 승리로 치지
+        않는다 — 사망 훅이 비동기라 아직 소환이 끝나지 않은 원본 상황에
+        대응하는 안전장치다."""
         self.reap_deaths()
-        return not self.alive_enemies
+        if self.alive_enemies:
+            return False
+        for creature in [self.player, *self.monsters]:
+            for power in list(creature._powers.values()):
+                hook = getattr(power, "should_stop_combat_from_ending", None)
+                if hook and hook():
+                    return False
+        return True
 
     def _resolve_targets(self, card: "STS2Card",
                          target: Optional["MonsterModel"]) -> List["MonsterModel"]:
@@ -649,12 +664,31 @@ class CombatState:
                 if hook:
                     hook(card, paid, self)
 
+    def add_monster(self, monster: "MonsterModel",
+                    slot_name: Optional[str] = None) -> "MonsterModel":
+        """전투 중 몬스터 추가 (원본 CreatureCmd.Add — InfestedPower의 Wriggler
+        소환 등). 전투가 이미 끝났으면 원본 `IsLiveCombat()` 가드와 동일하게
+        아무 것도 하지 않는다.
+
+        추가된 몬스터는 전투 rng를 물려받아 시드 재현성을 유지하고, 소환 시점에
+        `setup_for_combat`으로 HP/무브 그래프/개전 파워를 초기화한다."""
+        if self._combat_over:
+            return monster
+        monster.slot_name = slot_name
+        monster.setup_for_combat(self, self.rng)
+        self.monsters.append(monster)
+        return monster
+
     def reap_deaths(self) -> None:
         """새 사망 episode를 집계하고 사망 훅·owner 파워 정리를 수행한다.
 
         훅에서 동기적으로 부활한 몬스터는 latch를 해제하여 최종 재사망을 별도
-        episode로 집계한다 (Waterfall Giant의 Steam Eruption)."""
-        for monster in self.monsters:
+        episode로 집계한다 (Waterfall Giant의 Steam Eruption).
+
+        사망 훅이 새 몬스터를 소환할 수 있으므로(InfestedPower) 스냅샷을 떠서
+        순회한다 — self.monsters를 직접 돌면 순회 중 변경으로 터진다. 소환된
+        몬스터는 살아있는 상태라 이번 패스에서 처리할 일이 없다."""
+        for monster in list(self.monsters):
             key = id(monster)
             if not monster.is_dead:
                 self._dead_seen.discard(key)
@@ -822,6 +856,7 @@ class CombatState:
                 self.discard_pile.append(card)
 
     def _finish(self, victory: bool) -> CombatResult:
+        self._combat_over = True  # 종료 후 소환 차단 (원본 IsLiveCombat 가드)
         # 전투 한정 키워드 변형(MasterPlanner Sly/PhantomBlades Retain 등)을 원복
         for pile in (self.hand, self.draw_pile, self.discard_pile, self.exhaust_pile):
             for card in pile:

@@ -2998,6 +2998,49 @@ class PaperCutsPower(STS2Power):
 
 
 # ══════════════════════════════════════════
+# Phase 6o — 전투 중 소환 계열 파워
+# ══════════════════════════════════════════
+
+class InfestedPower(STS2Power):
+    """감염 — 보유자가 죽으면 그 자리에서 Wriggler 4마리가 스턴 상태로 튀어나온다
+    (원본 InfestedPower.AfterDeath — wasRemovalPrevented가 아닐 때만, 슬롯은
+    PhrogParasiteElite.GetWrigglerSlotName(i) = "wriggler1".."wriggler4").
+
+    소환된 Wriggler는 StartStunned=true라 소환 당한 턴에는 SPAWNED_MOVE(무행동)를
+    수행하고, 슬롯 이름에 따라 홀수는 NASTY_BITE, 짝수는 WRIGGLE로 갈린다.
+
+    원본 ShouldStopCombatFromEnding()=true — 소환이 비동기로 끝나기 전에 적
+    전멸로 승리 판정되는 것을 막는다. 이 엔진은 사망 훅이 동기라 소환이 이미
+    끝난 상태지만, 파워를 제거하지 않는 원본 동작을 그대로 두면 승리가 영원히
+    막히므로 소환 직후 스스로를 제거한다 (owner 사망 시 파워 일괄 제거로도
+    사라지지만, 그 정리는 이 훅 이후에 일어나므로 명시적으로 끊는다)."""
+    power_id = "infested"
+    name = "Infested"
+    is_debuff = False
+
+    WRIGGLER_COUNT = 4
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None or dead is not owner:
+            return
+        combat = getattr(owner, "combat_state", None)
+        self.remove()
+        if combat is None:
+            return
+        from sts2_sim.entities.monsters_batch7c import Wriggler
+        for i in range(self.WRIGGLER_COUNT):
+            slot = f"wriggler{i + 1}"
+            combat.add_monster(
+                Wriggler(starts_with_wriggle=(i % 2 == 1), start_stunned=True),
+                slot_name=slot,
+            )
+
+    def should_stop_combat_from_ending(self) -> bool:
+        return True
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -3176,6 +3219,8 @@ POWER_REGISTRY = {
     "slow": SlowPower,
     "slippery": SlipperyPower,
     "paper_cuts": PaperCutsPower,
+    # Phase 6o
+    "infested": InfestedPower,
 }
 
 
