@@ -675,9 +675,25 @@ class CombatState:
         if self._combat_over:
             return monster
         monster.slot_name = slot_name
+        monster.encounter_id = self.encounter_id  # 소환체도 같은 슬롯 풀을 공유
         monster.setup_for_combat(self, self.rng)
         self.monsters.append(monster)
         return monster
+
+    @property
+    def encounter_id(self) -> Optional[str]:
+        """이 전투의 인카운터 ID (몬스터에 새겨진 값). 슬롯 조회용."""
+        for monster in self.monsters:
+            if monster.encounter_id:
+                return monster.encounter_id
+        return None
+
+    def next_free_slot(self) -> Optional[str]:
+        """아직 비어 있는 첫 슬롯 (원본 EncounterModel.GetNextSlot).
+        슬롯이 정의되지 않았거나 전부 찼으면 None — 소환 몬스터가 자리를
+        확보할 수 있는지 판정하는 데 쓴다."""
+        from sts2_sim.core.encounters import get_next_slot
+        return get_next_slot(self.encounter_id, self.monsters)
 
     def reap_deaths(self) -> None:
         """새 사망 episode를 집계하고 사망 훅·owner 파워 정리를 수행한다.

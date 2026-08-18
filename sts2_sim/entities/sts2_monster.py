@@ -77,24 +77,35 @@ class RandomBranchState(MonsterState):
     무관하게 리스트의 첫 항목이 선택됨)."""
     def __init__(self, name: str):
         super().__init__(name)
-        self.branches: List[tuple] = []  # (state, weight, cannot_repeat, cooldown, max_repeats)
+        # (state, weight, cannot_repeat, cooldown, max_repeats, use_only_once)
+        self.branches: List[tuple] = []
 
-    def add_branch(self, state: MoveState, weight: int = 1, cannot_repeat: bool = False,
-                   cooldown: int = 0, max_repeats: Optional[int] = None):
-        self.branches.append((state, weight, cannot_repeat, cooldown, max_repeats))
+    def add_branch(self, state: MoveState, weight=1, cannot_repeat: bool = False,
+                   cooldown: int = 0, max_repeats: Optional[int] = None,
+                   use_only_once: bool = False):
+        """weight는 상수 또는 무인자 callable — 원본의 `Func<float>` 가중치
+        오버로드(TwoTailedRat의 CanSummon 기반 확률 전환) 대응. 가중치가 0이면
+        후보에서 제외된다.
+        use_only_once — 원본 MoveRepeatType.UseOnlyOnce: 전투 중 한 번만 선택 가능."""
+        self.branches.append((state, weight, cannot_repeat, cooldown, max_repeats, use_only_once))
 
     def resolve(self, rng: random.Random, last_move_name: Optional[str],
                 history: Optional[List[str]] = None) -> MoveState:
         history = history or []
         candidates = []
-        for s, w, cr, cd, mr in self.branches:
+        for s, w, cr, cd, mr, once in self.branches:
             if cr and s.name == last_move_name:
+                continue
+            if once and s.name in history:
                 continue
             if mr is not None and len(history) >= mr and all(h == s.name for h in history[-mr:]):
                 continue
             if cd > 0 and s.name in history[-cd:]:
                 continue
-            candidates.append((s, w))
+            weight = w() if callable(w) else w
+            if weight <= 0:  # 원본: 가중치 0인 분기는 뽑히지 않는다
+                continue
+            candidates.append((s, weight))
         if not candidates:
             return self.branches[0][0]
         states = [s for s, _ in candidates]
@@ -189,6 +200,9 @@ class MonsterModel(Creature):
         # 원본 Creature.SlotName — 인카운터가 배치 위치(first/second/...)를 부여.
         # PhantasmalGardener처럼 시작 무브를 슬롯으로 결정하는 몬스터용.
         self.slot_name: Optional[str] = None
+        # 소속 인카운터 ID — 전투 중 소환이 빈 슬롯을 찾을 때만 참조
+        # (원본 CombatState.Encounter.GetNextSlot 대응, make_encounter가 새긴다).
+        self.encounter_id: Optional[str] = None
 
     @property
     def min_initial_hp(self) -> int:

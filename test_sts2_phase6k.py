@@ -374,17 +374,19 @@ def test_flail_knight_and_twig_slime_m_weight_audit():
     fk = FlailKnight()
     fk.setup_for_combat(None)
     rand = next(s for s in fk._move_state_machine.states if s.name == "RAND")
-    weights = {s.name: w for s, w, cr, cd, mr in rand.branches}
+    # branches 튜플은 (state, weight, cannot_repeat, cooldown, max_repeats, ...)
+    # 순서만 고정 — 뒤에 필드가 추가돼도 깨지지 않도록 인덱스로 읽는다.
+    weights = {b[0].name: b[1] for b in rand.branches}
     assert weights == {"WAR_CHANT": 1, "FLAIL_MOVE": 1, "RAM_MOVE": 1}, weights
-    max_repeats = {s.name: mr for s, w, cr, cd, mr in rand.branches}
+    max_repeats = {b[0].name: b[4] for b in rand.branches}
     assert max_repeats["FLAIL_MOVE"] == 2 and max_repeats["RAM_MOVE"] == 2
 
     ts = TwigSlimeM()
     ts.setup_for_combat(None)
     rand2 = next(s for s in ts._move_state_machine.states if s.name == "RAND")
-    weights2 = {s.name: w for s, w, cr, cd, mr in rand2.branches}
+    weights2 = {b[0].name: b[1] for b in rand2.branches}
     assert weights2 == {"POKEY_POUNCE_MOVE": 1, "STICKY_SHOT_MOVE": 1}, weights2
-    max_repeats2 = {s.name: mr for s, w, cr, cd, mr in rand2.branches}
+    max_repeats2 = {b[0].name: b[4] for b in rand2.branches}
     assert max_repeats2["POKEY_POUNCE_MOVE"] == 2
     print("✅ FlailKnight/TwigSlimeM: 균등 가중치(1:1:1 / 1:1) + max_repeats=2 확인"
           " (Phase 6k 감사에서 발견한 선행 오버로드 오독 버그 수정)")

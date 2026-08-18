@@ -42,7 +42,7 @@ from sts2_sim.entities.monsters_batch11 import (
     SlimedBerserker, SlitheringStrangler, Exoskeleton, HunterKiller,
     MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting, Vantom,
 )
-from sts2_sim.entities.monsters_batch12 import PhrogParasite
+from sts2_sim.entities.monsters_batch12 import PhrogParasite, TwoTailedRat
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -102,6 +102,17 @@ def _phantasmal_gardeners(rng: random.Random) -> List[MonsterModel]:
     for gardener, slot in zip(gardeners, ("first", "second", "third", "fourth")):
         gardener.slot_name = slot
     return gardeners
+
+
+def _two_tailed_rats(rng: random.Random) -> List[MonsterModel]:
+    """TwoTailedRatsNormal: 슬롯 5칸 중 뒤 3칸(third/fourth/fifth)에 3마리 배치.
+    앞 2칸(first/second)은 CALL_FOR_BACKUP 소환분이 채운다 (원본 GenerateMonsters —
+    Slots[2], Slots[3], Slots[4]). 시작 무브는 무작위 인덱스에서 +1씩 회전."""
+    start = rng.randrange(3)
+    rats = [TwoTailedRat(starter_move_index=(start + i) % 3) for i in range(3)]
+    for rat, slot in zip(rats, ("third", "fourth", "fifth")):
+        rat.slot_name = slot
+    return rats
 
 
 def _slotted(monster: MonsterModel, slot_name: str) -> MonsterModel:
@@ -221,6 +232,7 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # PhrogParasiteElite: 슬롯 phrog + wriggler1~4. 시작은 PhrogParasite 1마리뿐이고
     # 나머지 4슬롯은 사망 시 InfestedPower가 Wriggler로 채운다.
     "phrog_parasite_elite": lambda rng: [_slotted(PhrogParasite(), "phrog")],
+    "two_tailed_rats_normal": _two_tailed_rats,
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류
@@ -233,12 +245,40 @@ ELITE_POOL = ["knights_elite"]
 NORMAL_POOL = EASY_POOL + MEDIUM_POOL
 
 
+# 인카운터별 슬롯 목록 (원본 EncounterModel.Slots) — 전투 중 소환이 빈 슬롯을
+# 찾을 때만 쓰인다 (원본 GetNextSlot: Slots에서 아직 아무도 차지하지 않은 첫 칸).
+# 소환하지 않는 인카운터는 슬롯 개념 자체가 전투 판정에 관여하지 않아 생략한다.
+ENCOUNTER_SLOTS: Dict[str, List[str]] = {
+    "phrog_parasite_elite": ["phrog", "wriggler1", "wriggler2", "wriggler3", "wriggler4"],
+    "two_tailed_rats_normal": ["first", "second", "third", "fourth", "fifth"],
+    "exoskeletons_normal": ["first", "second", "third", "fourth"],
+    "exoskeletons_weak": ["first", "second", "third"],
+}
+
+
+def get_next_slot(encounter_id: Optional[str], monsters: List[MonsterModel]) -> Optional[str]:
+    """아직 아무도 차지하지 않은 첫 슬롯 (원본 EncounterModel.GetNextSlot).
+    슬롯이 정의되지 않았거나 전부 찼으면 None."""
+    slots = ENCOUNTER_SLOTS.get(encounter_id or "")
+    if not slots:
+        return None
+    taken = {m.slot_name for m in monsters if not m.is_gone}
+    for slot in slots:
+        if slot not in taken:
+            return slot
+    return None
+
+
 def make_encounter(encounter_id: str, rng: Optional[random.Random] = None) -> List[MonsterModel]:
-    """인카운터 ID로 몬스터 목록 생성."""
+    """인카운터 ID로 몬스터 목록 생성.
+    전투 중 소환이 슬롯을 찾을 수 있도록 생성된 몬스터에 인카운터 ID를 새긴다."""
     factory = ENCOUNTERS.get(encounter_id)
     if factory is None:
         raise KeyError(f"알 수 없는 인카운터: {encounter_id}")
-    return factory(rng or random.Random())
+    monsters = factory(rng or random.Random())
+    for monster in monsters:
+        monster.encounter_id = encounter_id
+    return monsters
 
 
 def random_encounter(rng: random.Random, elite: bool = False) -> List[MonsterModel]:
