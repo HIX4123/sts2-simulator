@@ -92,8 +92,8 @@ BygoneEffigy(엘리트), Inklet, ScrollOfBiting, Vantom(보스 — Doom 즉사 �
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
 FrogKnight HP 절반), ConditionalBranchState(슬롯·상태 조건 순차 평가 —
 PhantasmalGardener/Exoskeleton), 도주(FatGremlin/SneakyGremlin 대기→행동),
-상태이상 삽입(Dazed/Slimed/Infection/Toxic/Beckon, **손패 직접 삽입** —
-MechaKnight 화상), Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍
+상태이상 삽입(Dazed/Slimed/Infection/Toxic/Beckon/Wound, **손패 직접 삽입**
+— MechaKnight 화상, 상한 초과분은 원본대로 버림 더미로), Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍
 버그 수정), Artifact 디버프 무효, Plating 감쇠 블록(개전 즉시 지급 — Phase 6l),
 Tangled 공격 봉쇄, 슬롯 의존 초기 행동(Nibbit/Toadpole/Myte/Wriggler/
 PunchConstruct/PhantasmalGardener/Exoskeleton), 다단히트 파워 소급반영
@@ -599,7 +599,7 @@ LagavulinMatriarch 포함.
 - **신규 파워 6종**: Constrict / HardToKill / Tender / Slow / Slippery / PaperCuts
   (전부 Phase 6k 정찰에서 "미이식 파워"로 식별됐던 항목)
 
-### 엔진 확장 3건 + 버그 수정 2건
+### 엔진 확장 3건 + 버그 수정 3건
 
 1. **`Creature.lose_max_hp` 신설** — 원본 `CreatureCmd.LoseMaxHp`는 새 최대
    HP가 현재 HP보다 낮으면 그 초과분을 `Unblockable|Unpowered` **피해로**
@@ -618,7 +618,15 @@ LagavulinMatriarch 포함.
    가리키는 경우(Exoskeleton INIT_MOVE의 fourth 슬롯 → RAND) 한 단계만 풀려
    브랜치 노드가 현재 상태로 남고 `execute_move`에서 터졌다. `advance_state`가
    이미 쓰던 while 루프 방식으로 통일해 수정
-5. **`test_sts2_phase6.py` Plating 기대값 갱신** — Phase 6l의 개전 즉시 지급
+5. **손패 상한 초과 생성 카드 소실 버그** — `generate_card(to="hand")`가 손패
+   10장일 때 카드를 어느 파일에도 넣지 않고 그대로 버렸다. 원본
+   `CardPileCmd.Add`는 `isFullHandAdd`이면 대상 파일을 버림 더미로 바꾼다
+   (CardPileCmd.cs:469-473). MechaKnight FLAMETHROWER(화상 4장)에서 실제로
+   발현 — 개별 호출자가 아니라 공유 경로인 `generate_card`에서 고쳐
+   기존 손패 삽입 호출자(`monsters_batch7c.py`)도 함께 교정했다.
+   이 항목은 리뷰가 "원본을 읽지 않고 쓴 주석"을 지적한 데서 출발했다 —
+   주석의 주장 자체는 맞았지만 검증 과정에서 이식 불일치가 드러난 사례
+6. **`test_sts2_phase6.py` Plating 기대값 갱신** — Phase 6l의 개전 즉시 지급
    변경(정당한 동작 수정)을 낡은 6a 테스트가 따라가지 못해 실패하던 상태.
    실제 코드가 원본과 일치함을 확인하고 테스트 쪽을 현행 사양으로 갱신
 

@@ -4,6 +4,11 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
+**현재 위치: Phase 6n 완료** — 카드 503종 / 파워 168종 / 몬스터 70종 /
+인카운터 51종 / 렐릭 22종 / 오브 5종, 루트 회귀 18스위트 전체 통과.
+다음은 [Phase 6o+](#-phase-6o--남은-확대-계획): 몬스터 잔여 ~52종, 렐릭·포션 풀,
+Ascension, 실제 맵 그래프.
+
 ---
 
 ## ✅ Phase 1~2 — 코어 시스템 (완료)
@@ -434,9 +439,14 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
 - [x] **`resolve_initial` 버그 수정**: 초기 상태 분기가 다시 분기를 가리킬 때
   (Exoskeleton fourth 슬롯 → RAND) 한 단계만 해석돼 브랜치 노드가 현재 상태로
   남아 `execute_move`에서 터지던 문제 — `advance_state`와 동일한 반복 해석으로 수정
+- [x] **손패 상한 초과 생성 카드 소실 버그 수정**: `generate_card(to="hand")`가
+  손패 10장일 때 카드를 어느 파일에도 넣지 않고 버려, MechaKnight
+  FLAMETHROWER(화상 4장)처럼 한 번에 여러 장을 손패로 넣는 무브에서 카드가
+  사라졌다. 원본 `CardPileCmd.Add`의 `isFullHandAdd` 분기(targetPile = Discard)대로
+  버림 더미로 돌리도록 공유 경로에서 수정 — 기존 손패 삽입 호출자도 함께 교정
 - [x] **`test_sts2_phase6.py` Plating 기대값 갱신**: Phase 6l의 개전 즉시 지급
   변경을 낡은 6a 테스트가 따라가지 못해 실패하던 기존 이슈 해소
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 23개 테스트) — 루트 18스위트 전체 통과
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 24개 테스트) — 루트 18스위트 전체 통과
 
 ## 📋 Phase 6o+ — 남은 확대 (계획)
 
