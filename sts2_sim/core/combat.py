@@ -227,7 +227,7 @@ class CombatState:
         """뽑을 더미 맨 위 count장 자동 플레이 (원본 CardPileCmd.AutoPlayFromDrawPile
         — Mayhem, Colorless Phase 6g)."""
         for _ in range(count):
-            if not self.alive_enemies:
+            if self._combat_is_won():
                 return
             if not self.draw_pile:
                 if not self.discard_pile:
@@ -388,7 +388,7 @@ class CombatState:
                 if hook and card in self.exhaust_pile:
                     hook(self)
             self.notify_player_powers("on_pre_play_phase", self)  # Mayhem(Colorless)
-            if not self.alive_enemies:
+            if self._combat_is_won():
                 return self._finish(True)
 
             while True:
@@ -397,10 +397,10 @@ class CombatState:
                     break
                 card, target = choice
                 self.play_card(card, target)
-                if not self.alive_enemies or self.end_turn_requested:
+                if self._combat_is_won() or self.end_turn_requested:
                     break
 
-            if not self.alive_enemies:
+            if self._combat_is_won():
                 return self._finish(True)
 
             # 자동 후플레이 페이즈 (원본 AutoPostPlayPhase) — IAmInvincible 자동 플레이
@@ -408,12 +408,12 @@ class CombatState:
                 hook = getattr(self.draw_pile[-1], "on_post_play_phase", None)
                 if hook:
                     hook(self)
-            if not self.alive_enemies:
+            if self._combat_is_won():
                 return self._finish(True)
 
             # 턴 종료
             self.player.orb_queue.trigger_turn_end(self)
-            if not self.alive_enemies:
+            if self._combat_is_won():
                 return self._finish(True)
             for power in list(self.player._powers.values()):
                 on_end = getattr(power, "on_turn_end", None)
@@ -457,15 +457,21 @@ class CombatState:
                     if hook:
                         hook()
 
-            if not self.alive_enemies:
+            if self._combat_is_won():
                 return self._finish(True)
 
     def _trigger_doom(self) -> None:
         """Doom 보유 적: 턴 종료 시 HP가 Doom 수치 이하이면 즉사 (원본 DoomKill = 직접 처치)."""
         for enemy in list(self.alive_enemies):
             doom = enemy._powers.get("doom")
-            if doom is not None and doom.is_owner_doomed():
+            if (doom is not None and doom.is_owner_doomed()
+                    and enemy.should_disappear_from_doom):
                 enemy._current_hp = 0
+
+    def _combat_is_won(self) -> bool:
+        """사망 훅의 동기 부활을 먼저 수습한 뒤 승리를 판정한다."""
+        self.reap_deaths()
+        return not self.alive_enemies
 
     def _resolve_targets(self, card: "STS2Card",
                          target: Optional["MonsterModel"]) -> List["MonsterModel"]:
@@ -623,11 +629,36 @@ class CombatState:
                     hook(card, paid, self)
 
     def reap_deaths(self) -> None:
-        """새로 사망한 적을 집계 (Melancholy 코스트 감소용)."""
-        for m in self.monsters:
-            if m.is_dead and id(m) not in self._dead_seen:
-                self._dead_seen.add(id(m))
-                self.deaths_this_combat += 1
+        """새 사망 episode를 집계하고 사망 훅·owner 파워 정리를 수행한다.
+
+        훅에서 동기적으로 부활한 몬스터는 latch를 해제하여 최종 재사망을 별도
+        episode로 집계한다 (Waterfall Giant의 Steam Eruption)."""
+        for monster in self.monsters:
+            key = id(monster)
+            if not monster.is_dead:
+                self._dead_seen.discard(key)
+                continue
+            if key in self._dead_seen:
+                continue
+
+            self._dead_seen.add(key)
+            self.deaths_this_combat += 1
+            self._broadcast_death(monster)
+
+            for power_id, power in list(monster._powers.items()):
+                if not getattr(power, "persists_after_owner_death", False):
+                    monster.remove_power(power_id)
+
+            if not monster.is_dead:
+                self._dead_seen.discard(key)
+
+    def _broadcast_death(self, dead: "Creature") -> None:
+        """원본 AfterDeath — 플레이어/몬스터 구분 없이 전투 내 모든 파워에 통지."""
+        for creature in [self.player, *self.monsters]:
+            for p in list(creature._powers.values()):
+                hook = getattr(p, "on_any_death", None)
+                if hook:
+                    hook(dead)
 
     def _trigger_strangle(self) -> None:
         """Strangle — 플레이어 카드 플레이마다 교살당한 적이 비차단 피해."""

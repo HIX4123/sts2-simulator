@@ -34,6 +34,10 @@ from sts2_sim.entities.monsters_batch8 import (
     MysteriousKnight, Flyconid, ShrinkerBeetle, LouseProgenitor, SpinyToad,
     Byrdonis, FossilStalker, SoulFysh,
 )
+from sts2_sim.entities.monsters_batch9 import (
+    CorpseSlug, SkulkingColony, TerrorEel, PhantasmalGardener, LagavulinMatriarch,
+)
+from sts2_sim.entities.monsters_batch10 import WaterfallGiant
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -78,6 +82,23 @@ def _flyconid_normal(rng: random.Random) -> List[MonsterModel]:
     return [medium(), Flyconid()]
 
 
+def _corpse_slugs(rng: random.Random, count: int) -> List[MonsterModel]:
+    """CorpseSlugsNormal(3)/Weak(2) 공통: 원본 EnsureCorpseSlugsStartWithDifferentMoves —
+    공유 인카운터 rng로 시작 인덱스를 뽑고 슬러그마다 +1씩 밀어 서로 다른
+    시작 무브를 배정한다 (마릿수가 3 이하이므로 항상 전부 다름)."""
+    start = rng.randrange(3)
+    return [CorpseSlug(starter_move_idx=start + i) for i in range(count)]
+
+
+def _phantasmal_gardeners(rng: random.Random) -> List[MonsterModel]:
+    """PhantasmalGardenersElite: 4마리, 슬롯 first/second/third/fourth 고정 배정
+    (원본 GenerateMonsters — 무작위 없이 고정 순서)."""
+    gardeners = [PhantasmalGardener() for _ in range(4)]
+    for gardener, slot in zip(gardeners, ("first", "second", "third", "fourth")):
+        gardener.slot_name = slot
+    return gardeners
+
+
 ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── 원본 구성 그대로 ──
     "slimes_weak": _slimes_weak,
@@ -120,6 +141,15 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     "byrdonis_elite": lambda rng: [Byrdonis()],
     "fossil_stalker_normal": lambda rng: [FossilStalker()],
     "soul_fysh_boss": lambda rng: [SoulFysh()],
+    # ── Phase 6l (Act1 완결, 원본 구성 그대로) ──
+    "corpse_slugs_normal": lambda rng: _corpse_slugs(rng, 3),
+    "corpse_slugs_weak": lambda rng: _corpse_slugs(rng, 2),
+    "skulking_colony_elite": lambda rng: [SkulkingColony()],
+    "terror_eel_elite": lambda rng: [TerrorEel()],
+    "phantasmal_gardeners_elite": _phantasmal_gardeners,
+    "lagavulin_matriarch_boss": lambda rng: [LagavulinMatriarch()],
+    # ── Phase 6m ──
+    "waterfall_giant_boss": lambda rng: [WaterfallGiant()],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

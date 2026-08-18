@@ -424,10 +424,20 @@ class Artifact(STS2Power):
 class Plating(STS2Power):
     """도금 — 턴 종료마다 스택만큼 블록 획득, 소유자의 매 턴 시작마다 스택 1 감소
     (피격 여부 무관). 단, 파워가 이미 존재한 채로 맞이하는 라운드 1 시작은 예외
-    (원본 PlatingPower.AfterSideTurnStart — TurnNumber/RoundNumber != 1)."""
+    (원본 PlatingPower.AfterSideTurnStart — TurnNumber/RoundNumber != 1).
+    최초 부여 시(전투 시작 전 AfterAddedToRoom 등) 블록을 즉시 지급한다 — 원본
+    BeforeSideTurnStart(round1)이 라운드 1 플레이어 턴 시작 "전"에 먼저
+    지급하므로, 개전 시 이 파워를 부여받는 몬스터(MysteriousKnight/
+    LagavulinMatriarch 등)는 플레이어의 첫 공격부터 블록으로 막아야 한다."""
     power_id = "plating"
     name = "Plating"
     is_debuff = False
+
+    def apply(self, owner, applier=None) -> None:
+        fresh = self.power_id not in owner._powers
+        super().apply(owner, applier)
+        if fresh:
+            owner.gain_block(owner._powers[self.power_id].amount, powered=False)
 
     def on_turn_end(self) -> None:
         if self.owner and self.amount > 0:
@@ -2698,6 +2708,155 @@ class TheGambitP(STS2Power):
 
 
 # ══════════════════════════════════════════
+# Phase 6l — Act1 완결 배치 (CorpseSlug/SkulkingColony/TerrorEel/
+# PhantasmalGardener/LagavulinMatriarch) 전용 파워
+# ══════════════════════════════════════════
+
+class RavenousPower(STS2Power):
+    """게걸스러움 — 같은 편(몬스터) 동료가 죽으면 자신을 1턴 스턴시키고
+    (원본 CreatureCmd.Stun — 무행동, 직전 위치로 복귀) 힘을 얻는다 (원본
+    RavenousPower.AfterDeath — target != Owner && 같은 편 && !Owner.IsDead).
+    CorpseSlug가 전투 시작 시 스스로에게 적용."""
+    power_id = "ravenous"
+    name = "Ravenous"
+    is_debuff = False
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None or owner.is_dead or dead is owner:
+            return
+        combat = getattr(owner, "combat_state", None)
+        if combat is None or dead not in combat.monsters:
+            return  # 원본 target.Side == Owner.Side — 몬스터측 사망만 반응
+        owner.stun()
+        owner.apply_power(Strength(self.amount))
+
+
+class ShriekPower(STS2Power):
+    """비명 — 현재 HP가 자신의 수치 이하로 떨어지면 1턴 스턴 후 TERROR_MOVE로
+    강제 전환되고 자신은 제거된다 (원본 ShriekPower.AfterDamageReceived —
+    UnblockedDamage>0 && CurrentHp<=Amount, IsPoweredAttack 게이트 없음).
+    TerrorEel이 전투 시작 시 스스로에게 적용."""
+    power_id = "shriek"
+    name = "Shriek"
+    is_debuff = True
+
+    def on_take_damage_powered(self, attacker, hp_lost: int, powered: bool) -> None:
+        owner = self.owner
+        if owner is None or hp_lost <= 0:
+            return
+        if owner.current_hp <= self.amount:
+            owner.stun(next_move_name="TERROR_MOVE")
+            self.remove()
+
+
+class AsleepPower(STS2Power):
+    """수면 — 피해를 받으면 즉시 Plating을 제거하고 1턴 스턴 후 SLASH_MOVE로
+    전환된다 (원본 AfterDamageReceived — UnblockedDamage!=0, 임계값 없이
+    아무 피해나 반응). 자신의 매 턴 종료마다 감소하며(원본 AfterSideTurnEnd)
+    0에 도달하면 Plating을 제거하고 다음 턴을 SLASH_MOVE로 강제 전환한다.
+    원본은 RollMove가 AfterSideTurnEnd 이후 별도 시점에 호출돼 자연스럽게
+    ConditionalBranchState가 갱신되지만, 이 엔진은 advance_state()가 무브
+    실행 직후(자신의 on_turn_end보다 먼저) 끝나므로 자연 감쇠 시에도 명시적
+    강제 전환이 필요하다 — 그렇지 않으면 SLEEP_MOVE가 한 턴 더 나오는 오차가
+    생긴다. 스턴을 거치지 않고 즉시 전환하는 것도 원본과 일치 (원본 자연
+    감쇠 경로는 Stun을 호출하지 않음 — 피격으로 깨는 경우만 1턴 스턴 패널티)."""
+    power_id = "asleep"
+    name = "Asleep"
+    is_debuff = False
+
+    def on_take_damage_powered(self, attacker, hp_lost: int, powered: bool) -> None:
+        owner = self.owner
+        if owner is None or hp_lost <= 0:
+            return
+        if owner.has_power("plating"):
+            owner.remove_power("plating")
+        self.remove()
+        owner.stun(next_move_name="SLASH_MOVE")
+
+    def on_turn_end(self) -> None:
+        owner = self.owner
+        if owner is None:
+            return
+        if self.amount <= 1 and owner.has_power("plating"):
+            owner.remove_power("plating")
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+            sm = getattr(owner, "_move_state_machine", None)
+            if sm is not None:
+                target = sm.states_by_name.get("SLASH_MOVE")
+                if target is not None:
+                    sm.force_current_state(target)
+
+
+class HardenedShellPower(STS2Power):
+    """강화 외피 — 자신의 한 턴 동안 잃는 HP 총합을 amount로 제한한다 (원본
+    ModifyHpLostBeforeOstyLate — 블록 흡수 이후의 HP 손실량 단계에서 적용되므로
+    Intangible의 modify_damage_cap(블록 흡수 이전 단계)이 아니라 lose_hp의
+    modify_hp_lost 파이프라인을 사용한다). 자신의 턴 시작마다 누적치를
+    초기화한다."""
+    power_id = "hardened_shell"
+    name = "Hardened Shell"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._damage_this_turn = 0
+
+    def modify_hp_lost(self, amount: int) -> int:
+        remaining = max(0, self.amount - self._damage_this_turn)
+        result = min(amount, remaining)
+        self._damage_this_turn += result
+        return result
+
+    def on_turn_start(self) -> None:
+        self._damage_this_turn = 0
+
+
+class SkittishPower(STS2Power):
+    """소심함 — 플레이어의 카드 공격에 맞으면(턴당 1회) 블록 amount를 얻는다
+    (원본 AfterAttack — ValueProp.Move && ModelSource is CardModel 게이트:
+    오브 등 카드가 아닌 공격에는 반응하지 않음). 이 엔진에서는 powered 플래그
+    (Move 여부) + combat_state._card_effect_active(카드 use() 실행 구간)로
+    카드발 공격 여부를 판정한다. 자신의 턴 시작 시 플래그를 초기화한다 (원본은
+    플레이어 턴 종료마다 초기화하지만 그 사이 아무 것도 참조하지 않아 결과는
+    동일하다)."""
+    power_id = "skittish"
+    name = "Skittish"
+    is_debuff = False
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self._gained_this_turn = False
+
+    def on_take_damage_powered(self, attacker, hp_lost: int, powered: bool) -> None:
+        owner = self.owner
+        if owner is None or hp_lost <= 0 or self._gained_this_turn or not powered:
+            return
+        combat = getattr(owner, "combat_state", None)
+        if combat is None or not getattr(combat, "_card_effect_active", False):
+            return
+        self._gained_this_turn = True
+        owner.gain_block(self.amount, powered=False)
+
+    def on_turn_start(self) -> None:
+        self._gained_this_turn = False
+
+
+class SteamEruptionPower(STS2Power):
+    """증기 분출 — owner의 첫 사망 뒤 Waterfall Giant 특수 폭발 상태로 전환."""
+    power_id = "steam_eruption"
+    name = "Steam Eruption"
+    is_debuff = False
+    persists_after_owner_death = True
+
+    def on_any_death(self, dead) -> None:
+        if dead is self.owner:
+            dead.trigger_about_to_blow_state()
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -2868,6 +3027,7 @@ POWER_REGISTRY = {
     "tag_team": TagTeamP,
     "the_bomb": TheBombP,
     "the_gambit": TheGambitP,
+    "steam_eruption": SteamEruptionPower,
 }
 
 

@@ -102,23 +102,47 @@ class RandomBranchState(MonsterState):
         return rng.choices(states, weights=weights, k=1)[0]
 
 
+class ConditionalBranchState(MonsterState):
+    """조건 기반 분기 (디컴파일 ConditionalBranchState 대응).
+
+    RandomBranchState와 달리 가중치/RNG가 없다 — 등록 순서대로 조건 함수를
+    평가해 처음 True를 반환하는 분기로 즉시 전환한다 (원본 GetNextState:
+    foreach 순회 중 Evaluate() > 0인 첫 항목). 조건이 None이면 무조건 True로
+    취급 (원본 ConditionalBranch.Evaluate — 람다 없으면 1 반환)."""
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.branches: List[tuple] = []  # (state, condition)
+
+    def add_state(self, state: MonsterState, condition: Optional[Callable[[], bool]] = None) -> None:
+        self.branches.append((state, condition))
+
+    def resolve(self, rng: Optional[random.Random] = None, last_move_name: Optional[str] = None,
+                history: Optional[List[str]] = None) -> MonsterState:
+        for state, cond in self.branches:
+            if cond is None or cond():
+                return state
+        raise ValueError(f"ConditionalBranchState {self.name}: 유효한 다음 상태를 찾지 못함")
+
+
 class MonsterMoveStateMachine:
     """상태 머신: 몬스터의 행동 순서를 관리.
 
-    initial_state로 RandomBranchState도 허용 — setup_for_combat에서 rng 주입 후
-    resolve_initial()이 시드 rng로 첫 행동을 결정한다 (재현성 보장).
+    initial_state로 RandomBranchState/ConditionalBranchState도 허용 —
+    setup_for_combat에서 rng 주입 후 resolve_initial()이 시드 rng로 첫
+    행동을 결정한다 (재현성 보장).
     """
 
     def __init__(self, states: List[MonsterState], initial_state: MonsterState):
         self.states = states
+        self.states_by_name = {s.name: s for s in states}
         self.current_state: MonsterState = initial_state
         self.rng: random.Random = random.Random()
         self._last_move_name: Optional[str] = None
         self.history: List[str] = []  # 실행된 MoveState 이름 이력 (cooldown/max_repeats용)
 
     def resolve_initial(self) -> None:
-        """초기 상태가 RandomBranchState면 현재 rng로 해석."""
-        if isinstance(self.current_state, RandomBranchState):
+        """초기 상태가 branch 노드면 현재 rng로 해석."""
+        if isinstance(self.current_state, (RandomBranchState, ConditionalBranchState)):
             self.current_state = self.current_state.resolve(self.rng, None, self.history)
 
     def get_current_intent(self) -> Intent:
@@ -135,10 +159,16 @@ class MonsterMoveStateMachine:
 
     def advance_state(self) -> None:
         nxt = self.current_state.follow_up_state
-        while isinstance(nxt, RandomBranchState):
+        while isinstance(nxt, (RandomBranchState, ConditionalBranchState)):
             nxt = nxt.resolve(self.rng, self._last_move_name, self.history)
         if nxt is not None:
             self.current_state = nxt
+
+    def force_current_state(self, state: MonsterState) -> None:
+        """디컴파일 ForceCurrentState/SetMoveImmediate 대응 — 정상 전환 절차를
+        건너뛰고 즉시 현재 상태를 지정 상태로 덮어쓴다 (Shriek/Asleep 등의
+        HP·피격 반응형 강제 전환용)."""
+        self.current_state = state
 
 
 class MonsterModel(Creature):
@@ -152,6 +182,9 @@ class MonsterModel(Creature):
         self._move_state_machine: Optional[MonsterMoveStateMachine] = None
         self.combat_state: Optional["CombatState"] = None
         self.escaped = False
+        # 원본 Creature.SlotName — 인카운터가 배치 위치(first/second/...)를 부여.
+        # PhantasmalGardener처럼 시작 무브를 슬롯으로 결정하는 몬스터용.
+        self.slot_name: Optional[str] = None
 
     @property
     def min_initial_hp(self) -> int:
@@ -165,6 +198,11 @@ class MonsterModel(Creature):
     def is_gone(self) -> bool:
         """전투에서 제거됨 (사망 또는 도주)."""
         return self.is_dead or self.escaped
+
+    @property
+    def should_disappear_from_doom(self) -> bool:
+        """Doom 조건을 만족했을 때 전투에서 제거되는지 여부."""
+        return True
 
     def generate_move_state_machine(self) -> MonsterMoveStateMachine:
         nothing = MoveState("NOTHING", self._nothing_move, Intent(IntentType.HIDDEN))
@@ -195,6 +233,23 @@ class MonsterModel(Creature):
         if self._move_state_machine:
             return self._move_state_machine.get_current_intent()
         return Intent(IntentType.UNKNOWN)
+
+    def stun(self, callback: Optional[Callable[[List[Creature]], None]] = None,
+             next_move_name: Optional[str] = None) -> None:
+        """디컴파일 CreatureCmd.Stun 대응 — 정상 무브 그래프를 건너뛰고 (다음)
+        1턴은 callback(없으면 무행동)만 수행한 뒤, 그 다음부터 next_move_name
+        (미지정 시 직전 위치 — StunInternal의 nextMoveId ?? StateLog.Last())으로
+        재개한다. 이미 사망한 몬스터는 원본 StunInternal의 `!IsDead` 가드와
+        동일하게 무시한다."""
+        sm = self._move_state_machine
+        if sm is None or self.is_dead:
+            return
+        if next_move_name is None:
+            next_move_name = sm.history[-1] if sm.history else sm.current_state.name
+        target = sm.states_by_name.get(next_move_name)
+        stunned = MoveState("STUNNED", callback or (lambda targets: None), Intent(IntentType.STUN))
+        stunned.follow_up_state = target
+        sm.force_current_state(stunned)
 
     def take_turn(self, targets: List[Creature]) -> None:
         """현재 행동 실행 후 다음 상태로 전환.
