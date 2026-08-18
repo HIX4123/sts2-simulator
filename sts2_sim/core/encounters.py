@@ -43,6 +43,7 @@ from sts2_sim.entities.monsters_batch11 import (
     MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting, Vantom,
 )
 from sts2_sim.entities.monsters_batch12 import GremlinMerc, PhrogParasite, TwoTailedRat
+from sts2_sim.entities.monsters_batch13 import CubexConstruct, SoulNexus
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -236,6 +237,9 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # GremlinMercNormal: 시작은 머크 1마리. 죽으면 SurprisePower가
     # sneaky/fat 슬롯을 SneakyGremlin/FatGremlin으로 채운다.
     "gremlin_merc_normal": lambda rng: [_slotted(GremlinMerc(), "merc")],
+    # ── Phase 6r 배치13 ──
+    "cubex_construct_normal": lambda rng: [CubexConstruct()],
+    "soul_nexus_elite": lambda rng: [SoulNexus()],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

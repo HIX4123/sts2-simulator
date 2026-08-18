@@ -3040,6 +3040,18 @@ class InfestedPower(STS2Power):
         return True
 
 
+class MinionPower(STS2Power):
+    """부하 — 소환된 하수인 표식 (원본 MinionPower). 수치 효과는 없고
+    `ShouldPowerBeRemovedAfterOwnerDeath()=false`,
+    `ShouldOwnerDeathTriggerFatal()=false`로 "이 개체의 죽음은 전투의
+    분기점이 아니다"를 나타낸다 — 이 시뮬레이터에는 치명타 연출/보스
+    페이즈 판정이 없어 표식으로만 보존한다."""
+    power_id = "minion"
+    name = "Minion"
+    is_debuff = False
+    persists_after_owner_death = True
+
+
 class ThieveryPower(STS2Power):
     """도둑질 — 공격이 적중할 때마다(원본은 무브 안에서 명시 호출) 대상 플레이어의
     골드를 amount만큼 훔쳐 누적한다 (원본 ThieveryPower.Steal — 보유 골드보다
@@ -3310,6 +3322,7 @@ POWER_REGISTRY = {
     # Phase 6o
     "infested": InfestedPower,
     # Phase 6q
+    "minion": MinionPower,
     "thievery": ThieveryPower,
     "heist": HeistPower,
     "surprise": SurprisePower,
