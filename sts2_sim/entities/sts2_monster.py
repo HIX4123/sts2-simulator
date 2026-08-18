@@ -734,7 +734,11 @@ class FatGremlin(MonsterModel):
 # ── HP만 확정, 행동은 단순화된 몬스터 (TODO: 디컴파일 행동 이식) ──
 
 class Parafright(MonsterModel):
-    """파라프라이트 — HP 21 (행동 단순화)."""
+    """파라프라이트 — HP 21. TheObscura의 환영 소환체.
+
+    원본(Parafright.cs): 개전 시 IllusionPower(1) — 죽어도 전투에서 사라지지
+    않고 다음 턴 최대 HP로 부활한다. ShouldDisappearFromDoom=false.
+    무브는 SLAM_MOVE(16딜) 자기 반복 하나뿐."""
     monster_id = "parafright"
     title = "Parafright"
 
@@ -742,18 +746,39 @@ class Parafright(MonsterModel):
     def min_initial_hp(self) -> int:
         return 21
 
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        atk = MoveState("ATTACK", self._attack_move, Intent(IntentType.ATTACK, damage=3))
-        atk.follow_up_state = atk
-        return MonsterMoveStateMachine([atk], atk)
+    @property
+    def max_initial_hp(self) -> int:
+        return 21
 
-    def _attack_move(self, targets: List[Creature]) -> None:
+    @property
+    def slam_damage(self) -> int:
+        return 16
+
+    @property
+    def should_disappear_from_doom(self) -> bool:
+        return False
+
+    def after_added_to_room(self) -> None:
+        from sts2_sim.models.sts2_power import IllusionPower
+        self.apply_power(IllusionPower(1))
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        slam = MoveState("SLAM_MOVE", self._slam_move,
+                         Intent(IntentType.ATTACK, damage=self.slam_damage))
+        slam.follow_up_state = slam
+        return MonsterMoveStateMachine([slam], slam)
+
+    def _slam_move(self, targets: List[Creature]) -> None:
         for target in targets:
-            self.attack(target, 3)
+            self.attack(target, self.slam_damage)
 
 
 class EyeWithTeeth(MonsterModel):
-    """이빨 달린 눈 — HP 6 (행동 단순화)."""
+    """이빨 달린 눈 — HP 6. Fogmog의 환영 소환체.
+
+    원본(EyeWithTeeth.cs): 개전 시 IllusionPower(1), ShouldDisappearFromDoom=false.
+    무브는 DISTRACT_MOVE 하나뿐이며 공격이 아니라 Dazed 3장을 버림 더미에
+    넣는다 (기존 이식은 2딜 공격으로 잘못돼 있었다)."""
     monster_id = "eye_with_teeth"
     title = "Eye With Teeth"
 
@@ -761,14 +786,30 @@ class EyeWithTeeth(MonsterModel):
     def min_initial_hp(self) -> int:
         return 6
 
-    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
-        bite = MoveState("BITE", self._bite_move, Intent(IntentType.ATTACK, damage=2))
-        bite.follow_up_state = bite
-        return MonsterMoveStateMachine([bite], bite)
+    @property
+    def max_initial_hp(self) -> int:
+        return 6
 
-    def _bite_move(self, targets: List[Creature]) -> None:
-        for target in targets:
-            self.attack(target, 2)
+    @property
+    def distract_amount(self) -> int:
+        return 3
+
+    @property
+    def should_disappear_from_doom(self) -> bool:
+        return False
+
+    def after_added_to_room(self) -> None:
+        from sts2_sim.models.sts2_power import IllusionPower
+        self.apply_power(IllusionPower(1))
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        distract = MoveState("DISTRACT_MOVE", self._distract_move,
+                             Intent(IntentType.STATUS))
+        distract.follow_up_state = distract
+        return MonsterMoveStateMachine([distract], distract)
+
+    def _distract_move(self, targets: List[Creature]) -> None:
+        self.add_status_to_player_discard("dazed", self.distract_amount)
 
 
 class BattleFriendV1(MonsterModel):

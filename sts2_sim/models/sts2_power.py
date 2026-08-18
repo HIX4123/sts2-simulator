@@ -3040,6 +3040,68 @@ class InfestedPower(STS2Power):
         return True
 
 
+class IllusionPower(STS2Power):
+    """환영 — 죽어도 전투에서 사라지지 않고 다음 턴 REVIVE_MOVE로 최대 HP까지
+    되살아난다 (원본 IllusionPower.AfterDeath → SetMoveImmediate(REVIVE_MOVE),
+    ShouldCreatureBeRemovedFromCombatAfterDeath=false).
+
+    부활 무브를 수행하기 전까지는 공격 대상이 되지 않는다
+    (원본 ShouldAllowHitting — IsReviving이면 false).
+    사망 시 버프는 유지하고 디버프만 제거한다 (ShouldPowerBeRemovedOnDeath).
+    적용 시 MinionPower가 없으면 자동으로 붙인다 (AfterApplied).
+
+    Parafright / EyeWithTeeth(둘 다 TheObscura·Fogmog의 소환체)가 개전에 받는다.
+    WaterfallGiant의 SteamEruptionPower와 같은 "사망 인터셉트" 계열이라
+    persists_after_owner_death로 사망 시 파워 일괄 제거를 피한다."""
+    power_id = "illusion"
+    name = "Illusion"
+    is_debuff = False
+    persists_after_owner_death = True
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.is_reviving = False
+        self.follow_up_state_name: Optional[str] = None
+
+    def apply(self, owner, applier=None) -> None:
+        super().apply(owner, applier)
+        if not owner.has_power("minion"):  # 원본 AfterApplied
+            owner.apply_power(MinionPower(1))
+
+    def should_power_be_removed_on_death(self, power: "STS2Power") -> bool:
+        """원본 ShouldPowerBeRemovedOnDeath — 디버프만 제거하고 버프는 남긴다
+        (부활 뒤에도 쌓아둔 강화가 유지돼야 한다). combat.reap_deaths의
+        사망 시 파워 정리가 이 판정을 존중한다."""
+        return bool(getattr(power, "is_debuff", False))
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None or dead is not owner or self.is_reviving:
+            return
+        self.is_reviving = True
+        sm = getattr(owner, "_move_state_machine", None)
+        if sm is None:
+            return
+        from sts2_sim.entities.sts2_monster import Intent, IntentType, MoveState
+        resume = self.follow_up_state_name or (
+            sm.history[-1] if sm.history else sm.current_state.name)
+        revive = MoveState("REVIVE_MOVE", self._revive_move, Intent(IntentType.BUFF))
+        revive.follow_up_state = sm.states_by_name.get(resume)
+        sm.force_current_state(revive)
+
+    def _revive_move(self, targets) -> None:
+        owner = self.owner
+        if owner is None:
+            return
+        self.is_reviving = False
+        owner._current_hp = owner.max_hp  # 원본 Heal(MaxHp - CurrentHp)
+
+    def should_stop_combat_from_ending(self) -> bool:
+        # 부활 대기 중에는 전투가 끝나지 않는다 (원본은 사망 후에도 전투에서
+        # 제거되지 않아 Enemies에 남는 것으로 같은 효과를 낸다)
+        return self.is_reviving
+
+
 class MinionPower(STS2Power):
     """부하 — 소환된 하수인 표식 (원본 MinionPower). 수치 효과는 없고
     `ShouldPowerBeRemovedAfterOwnerDeath()=false`,
@@ -3322,6 +3384,7 @@ POWER_REGISTRY = {
     # Phase 6o
     "infested": InfestedPower,
     # Phase 6q
+    "illusion": IllusionPower,
     "minion": MinionPower,
     "thievery": ThieveryPower,
     "heist": HeistPower,

@@ -44,6 +44,7 @@ from sts2_sim.entities.monsters_batch11 import (
 )
 from sts2_sim.entities.monsters_batch12 import GremlinMerc, PhrogParasite, TwoTailedRat
 from sts2_sim.entities.monsters_batch13 import CubexConstruct, SoulNexus
+from sts2_sim.entities.monsters_batch14 import Fogmog, TheObscura
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -240,6 +241,10 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── Phase 6r 배치13 ──
     "cubex_construct_normal": lambda rng: [CubexConstruct()],
     "soul_nexus_elite": lambda rng: [SoulNexus()],
+    # ── Phase 6s 배치14 (환영 소환) ──
+    # 시작은 본체 1마리뿐이고 "illusion" 슬롯은 ILLUSION_MOVE가 채운다.
+    "fogmog_normal": lambda rng: [_slotted(Fogmog(), "fogmog")],
+    "the_obscura_normal": lambda rng: [_slotted(TheObscura(), "obscura")],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류
@@ -259,6 +264,8 @@ ENCOUNTER_SLOTS: Dict[str, List[str]] = {
     "phrog_parasite_elite": ["phrog", "wriggler1", "wriggler2", "wriggler3", "wriggler4"],
     "two_tailed_rats_normal": ["first", "second", "third", "fourth", "fifth"],
     "gremlin_merc_normal": ["merc", "sneaky", "fat"],
+    "fogmog_normal": ["illusion", "fogmog"],
+    "the_obscura_normal": ["illusion", "obscura"],
     "exoskeletons_normal": ["first", "second", "third", "fourth"],
     "exoskeletons_weak": ["first", "second", "third"],
 }

@@ -716,9 +716,19 @@ class CombatState:
             self.deaths_this_combat += 1
             self._broadcast_death(monster)
 
+            # 사망 시 파워 정리. 원본은 보유 파워들이 각자
+            # ShouldPowerBeRemovedOnDeath(other)로 "다른 파워를 지울지"를 결정한다
+            # (IllusionPower: 디버프만 지우고 버프는 남긴다 — 부활 뒤에도 강화가
+            # 유지되어야 하므로). 그런 판정자가 하나도 없으면 기존대로 전부 제거.
+            deciders = [p for p in monster._powers.values()
+                        if hasattr(p, "should_power_be_removed_on_death")]
             for power_id, power in list(monster._powers.items()):
-                if not getattr(power, "persists_after_owner_death", False):
-                    monster.remove_power(power_id)
+                if getattr(power, "persists_after_owner_death", False):
+                    continue
+                if deciders and not any(
+                        d.should_power_be_removed_on_death(power) for d in deciders):
+                    continue
+                monster.remove_power(power_id)
 
             if not monster.is_dead:
                 self._dead_seen.discard(key)
