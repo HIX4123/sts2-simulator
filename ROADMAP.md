@@ -373,18 +373,85 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
 - [x] 회귀 테스트 신규 스위트(`test_sts2_phase6k.py`, 21개 테스트) — 위 10건
   버그 전부 재발 방지 테스트 포함, 15스위트 전체 통과
 
-## 📋 Phase 6k+ — 남은 확대 (계획)
+## ✅ Phase 6l — 몬스터 확대 2차 · Act1 완결 (완료)
 
-- [ ] 몬스터 잔여 ~66종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
-  Mk1-3, WaterfallGiant, LagavulinMatriarch, Queen, TheLost/TheForgotten/
-  TheInsatiable(Possess 계열 신규 파워 필요) 등 — 개발용 클래스인
-  DeprecatedMonster/FakeMerchantMonster/OneHpMonster/TenHpMonster/TestSubject,
-  렐릭 전용 소환 펫(Byrdpip/PaelsLegion 등), 훈련용 더미(BattleFriendV3)는
-  제외한 실제 카운트)
+Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
+
+- [x] **배치9**: CorpseSlug(신규 `RavenousPower` — 동료 사망 시 스턴 후 힘 획득,
+  인카운터가 개체별 시작 무브를 다르게 배정), SkulkingColony(엘리트, 신규
+  `HardenedShellPower` — 자기 한 턴 HP 손실 총합 제한), TerrorEel(엘리트, 신규
+  `ShriekPower` — HP 임계 도달 시 강제 무브 전환), PhantasmalGardener(엘리트,
+  슬롯별 시작 무브 — 신규 `ConditionalBranchState`), LagavulinMatriarch(보스,
+  신규 `AsleepPower`/`SkittishPower`)
+- [x] **엔진 확장**: `ConditionalBranchState`(조건 순차 평가 분기),
+  `force_current_state`(HP·피격 반응형 강제 전환), `MonsterModel.stun`,
+  `Creature.slot_name`, `combat.reap_deaths`의 `on_any_death` 전역 브로드캐스트
+- [x] **Plating 개전 즉시 블록 지급 버그 수정** — 원본 `BeforeSideTurnStart(round1)`이
+  라운드 1 플레이어 턴 시작 "전"에 블록을 지급하므로, 개전 시 Plating을 받는
+  몬스터는 플레이어의 첫 공격부터 블록으로 막아야 함
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6l.py`) + 인카운터 6종 등록
+
+## ✅ Phase 6m — Waterfall Giant 보스 (완료)
+
+사망 인터셉트/부활 구조가 필요해 6l에서 분리했던 보스 1종.
+
+- [x] **배치10**: WaterfallGiant(HP 240) — 고정 6무브 순환, PRESSURE_GUN이
+  발동마다 20→25→30으로 성장, 모든 무브가 Steam을 누적
+- [x] **신규 `SteamEruptionPower`**: 소유자의 첫 사망을 가로채 최대/현재 HP를
+  복구하고 ABOUT_TO_BLOW 상태로 강제 전환 → 다음 턴 누적 Steam만큼 폭발 후
+  최종 사망. `persists_after_owner_death` 플래그로 사망 시 파워 일괄 제거에서 제외
+- [x] **`should_disappear_from_doom` 게이트**: Steam 보유 중에는 Doom 즉사가
+  이 보스를 제거하지 못함
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6m.py`) — 2단계 사망 lifecycle,
+  플레이어 턴 종료 사망의 조기 승리 방지 포함
+
+## ✅ Phase 6n — 몬스터 확대 2차 · 배치11 (완료)
+
+몬스터 8종 + 신규 파워 6종 + 인카운터 10종 (`MONSTER_REGISTRY` 69종).
+
+- [x] **배치11**: SlimedBerserker(고정 4순환, 신규 파워 불필요),
+  SlitheringStrangler(신규 `ConstrictPower`), Exoskeleton(신규
+  `HardToKillPower`, 슬롯별 시작 무브), HunterKiller(신규 `TenderPower`),
+  MechaKnight(엘리트, 개전 Artifact 3 + 화상 4장을 **손패**로),
+  BygoneEffigy(엘리트, 신규 `SlowPower`), Inklet(신규 `SlipperyPower`),
+  ScrollOfBiting(신규 `PaperCutsPower`)
+- [x] **신규 파워 6종**: Constrict(보유자 턴 종료마다 자해, 블록 적용,
+  applier 사망 시 제거) / HardToKill(Cap 단계 피해 상한) / Tender(카드
+  플레이마다 힘·민첩 -1, 자신 턴 종료 시 전량 복구) / Slow(이번 턴 카드
+  1장당 받는 파워드 피해 +10%) / Slippery(HP 손실 1 제한 + 관통 시 스택 감소) /
+  PaperCuts(관통 히트마다 플레이어 최대 HP 감소)
+- [x] **엔진 확장 3건**:
+  1. `Creature.lose_max_hp` — 원본 `CreatureCmd.LoseMaxHp`대로 현재 HP 초과분을
+     `Unblockable|Unpowered` 피해로 처리(손실 집계/`on_hp_lost` 훅 보존)한 뒤
+     최대 HP를 최소 1로 설정. 현재 HP를 직접 깎으면 최대 HP 전량 손실 시
+     사망하지 않는 차이가 생김
+  2. `on_landed_attack` 훅에 피격 대상 전달 — 원본 `AfterDamageGiven`이 target을
+     받으므로 PaperCuts의 "플레이어를 맞혔을 때만" 조건에 필요 (`SuckPower` 동반 수정)
+  3. `CombatState.notify_card_played` — 원본 `AfterCardPlayed`는 소유자 편과
+     무관하게 통지되므로 몬스터 파워에도 전달. 없으면 BygoneEffigy의 SlowPower가
+     영원히 누적되지 않음 (6k의 `on_enemy_turn_end` 누락과 동일 계열 버그)
+- [x] **`resolve_initial` 버그 수정**: 초기 상태 분기가 다시 분기를 가리킬 때
+  (Exoskeleton fourth 슬롯 → RAND) 한 단계만 해석돼 브랜치 노드가 현재 상태로
+  남아 `execute_move`에서 터지던 문제 — `advance_state`와 동일한 반복 해석으로 수정
+- [x] **`test_sts2_phase6.py` Plating 기대값 갱신**: Phase 6l의 개전 즉시 지급
+  변경을 낡은 6a 테스트가 따라가지 못해 실패하던 기존 이슈 해소
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 21개 테스트) — 루트 18스위트 전체 통과
+
+## 📋 Phase 6o+ — 남은 확대 (계획)
+
+- [ ] **Vantom** — HP 173, 개전 Slippery 8, `ShouldDisappearFromDoom=false`,
+  고정 4순환(INK_BLOT/INKY_LANCE/DISMEMBER+상처 3장/PREPARE). 디컴파일
+  `Models.Encounters`에 전용 인카운터가 없어 배치할 자리가 없으므로 6n에서 유예
+- [ ] 몬스터 잔여 ~53종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
+  Mk1-3, Queen, TheLost/TheForgotten/TheInsatiable(Possess 계열 신규 파워 필요),
+  GremlinMerc/LivingFog/TwoTailedRat(전투 중 소환·슬롯 소비 구조 필요) 등 —
+  개발용 클래스인 DeprecatedMonster/FakeMerchantMonster/OneHpMonster/
+  TenHpMonster/TestSubject, 렐릭 전용 소환 펫(Byrdpip/PaelsLegion 등),
+  훈련용 더미(BattleFriendV3)는 제외한 실제 카운트)
 - [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
 - [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
-  (Phase 6k 정찰로 최소 28종 추가 확인 — Slippery/Stock/Surprise/CrabRage/
-  Constrict/Slumber/HardToKill/Minion 등)
+  (6n에서 Slippery/Constrict/HardToKill 3종 해소 — Stock/Surprise/CrabRage/
+  Slumber/Minion 등 잔여)
 - [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
 - [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 업그레이드/보상 기회 확대로 엘리트 승률 개선
 - [ ] MCTS 정책 실험
@@ -410,6 +477,13 @@ python3 test_sts2_phase6b.py      # Ironclad 카드 풀 85종
 python3 test_sts2_phase6c.py      # Silent 카드 풀 86종
 python3 test_sts2_phase6d.py      # Defect 카드 풀 86종 + 오브 엔진 확장
 python3 test_sts2_phase6e.py      # Necrobinder 카드 풀 82종 + Osty/Doom/Ethereal 엔진
+python3 test_sts2_phase6f.py      # Regent 카드 풀 + 별(star) 엔진
+python3 test_sts2_phase6g.py      # Colorless 카드 풀
+python3 test_sts2_phase6j.py      # 몬스터 배치1 13종
+python3 test_sts2_phase6k.py      # 몬스터 배치8 8종 + 분기 오버로드 감사
+python3 test_sts2_phase6l.py      # 몬스터 배치9 5종 (Act1 완결)
+python3 test_sts2_phase6m.py      # WaterfallGiant 보스 (2단계 사망)
+python3 test_sts2_phase6n.py      # 몬스터 배치11 8종 + 파워 6종
 ```
 
 **통계 실행:**

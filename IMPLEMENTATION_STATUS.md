@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 55종 | 상태 머신 AI, 실제 HP/데미지 (Act1 보스 SoulFysh 포함) |
-| 인카운터 | 33종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
+| 몬스터 | 69종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant 포함) |
+| 인카운터 | 50종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 163종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 파워 | 168종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 15개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 18개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 55종
+## 👹 몬스터 69종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -77,14 +77,30 @@ Wriggler, Myte, FrogKnight (7c)
 ShrinkerBeetle, LouseProgenitor, SpinyToad, Byrdonis, FossilStalker,
 SoulFysh(Act1 보스)
 
+**Phase 6l 배치9 (monsters_batch9.py, Act1 완결):** CorpseSlug,
+SkulkingColony(엘리트), TerrorEel(엘리트), PhantasmalGardener(엘리트),
+LagavulinMatriarch(보스)
+
+**Phase 6m 배치10 (monsters_batch10.py):** WaterfallGiant(보스 — 첫 사망을
+가로채 누적 Steam만큼 폭발한 뒤 최종 사망하는 2단계 lifecycle)
+
+**Phase 6n 배치11 (monsters_batch11.py):** SlimedBerserker,
+SlitheringStrangler, Exoskeleton, HunterKiller, MechaKnight(엘리트),
+BygoneEffigy(엘리트), Inklet, ScrollOfBiting
+
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
-FrogKnight HP 절반), 도주(FatGremlin/SneakyGremlin 대기→행동), 상태이상 삽입(Dazed/
-Slimed/Infection/Toxic/Beckon), Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍
-버그 수정), Artifact 디버프 무효, Plating 감쇠 블록, Tangled 공격 봉쇄, 슬롯 의존
-초기 행동(Nibbit/Toadpole/Myte/Wriggler/PunchConstruct — 생성자 플래그로 인카운터
-슬롯 위치 반영), 다단히트 파워 소급반영 방지(SuckPower.flush_landed_attacks —
-Phase 6k), 몬스터 자기부여 파워의 적턴종료 감쇠(Intangible — Phase 6k).
+FrogKnight HP 절반), ConditionalBranchState(슬롯·상태 조건 순차 평가 —
+PhantasmalGardener/Exoskeleton), 도주(FatGremlin/SneakyGremlin 대기→행동),
+상태이상 삽입(Dazed/Slimed/Infection/Toxic/Beckon, **손패 직접 삽입** —
+MechaKnight 화상), Ritual 램핑(첫 틱 스킵 포함, Phase 6j에서 타이밍
+버그 수정), Artifact 디버프 무효, Plating 감쇠 블록(개전 즉시 지급 — Phase 6l),
+Tangled 공격 봉쇄, 슬롯 의존 초기 행동(Nibbit/Toadpole/Myte/Wriggler/
+PunchConstruct/PhantasmalGardener/Exoskeleton), 다단히트 파워 소급반영
+방지(SuckPower.flush_landed_attacks — Phase 6k), 몬스터 자기부여 파워의
+적턴종료 감쇠(Intangible — Phase 6k), 사망 인터셉트·부활(SteamEruption —
+Phase 6m), 피해 상한 Cap 단계(Intangible/HardToKill), HP 손실 상한
+(HardenedShell/Slippery), 최대 HP 감소(PaperCuts — Phase 6n).
 
 ## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
 
@@ -542,6 +558,85 @@ applier 인자 누락(무해), FossilStalker의 펫 제외/그룹핑 로직(펫 
   Intangible Cap, Thorns Unpowered 무반격, FlailKnight/TwigSlimeM 가중치
   감사 등), 15스위트 전체 통과
 
+## ✅ Phase 6l — 몬스터 확대 2차 · Act1 완결
+
+Act1(Underdocks) 미이식분 5종 + 신규 파워 5종. 엘리트 3종과 Act1 보스
+LagavulinMatriarch 포함.
+
+- **`monsters_batch9.py`**: CorpseSlug(신규 `RavenousPower`), SkulkingColony
+  (엘리트, 신규 `HardenedShellPower`), TerrorEel(엘리트, 신규 `ShriekPower`),
+  PhantasmalGardener(엘리트, 슬롯별 시작 무브), LagavulinMatriarch(보스,
+  신규 `AsleepPower`/`SkittishPower`)
+- **엔진 확장**: `ConditionalBranchState`(조건 순차 평가 분기 — 가중치/RNG
+  없이 등록 순서대로 첫 True 분기 선택), `force_current_state`(HP·피격
+  반응형 강제 전환), `MonsterModel.stun`(1턴 무행동 후 지정 무브 복귀),
+  `Creature.slot_name`, `on_any_death` 전역 브로드캐스트
+- **Plating 개전 즉시 블록 버그 수정**: 원본 `BeforeSideTurnStart(round1)`이
+  라운드 1 플레이어 턴 시작 "전"에 블록을 지급 — 개전 Plating 보유 몬스터가
+  플레이어의 첫 공격을 그냥 맞던 문제
+
+## ✅ Phase 6m — Waterfall Giant 보스
+
+사망 인터셉트/부활 구조가 필요해 6l에서 분리한 보스 1종.
+
+- **`monsters_batch10.py`**: WaterfallGiant(HP 240) — 고정 6무브 순환,
+  PRESSURE_GUN이 발동마다 20→25→30 성장, 모든 무브가 Steam 누적
+- **`SteamEruptionPower`**: 소유자의 첫 사망을 가로채 HP를 복구하고
+  ABOUT_TO_BLOW로 강제 전환 → 다음 턴 누적 Steam만큼 폭발 후 최종 사망.
+  `persists_after_owner_death`로 사망 시 파워 일괄 제거에서 제외
+- **`should_disappear_from_doom`**: Steam 보유 중 Doom 즉사 무효화
+
+## ✅ Phase 6n — 몬스터 확대 2차 · 배치11
+
+몬스터 8종 + 신규 파워 6종 + 인카운터 10종 (`MONSTER_REGISTRY` 69종).
+
+- **`monsters_batch11.py`**: SlimedBerserker(신규 파워 불필요),
+  SlitheringStrangler(`ConstrictPower`), Exoskeleton(`HardToKillPower`,
+  슬롯별 시작 무브), HunterKiller(`TenderPower`), MechaKnight(엘리트,
+  개전 Artifact 3 + 화상 4장을 **손패**로), BygoneEffigy(엘리트, `SlowPower`),
+  Inklet(`SlipperyPower`), ScrollOfBiting(`PaperCutsPower`)
+- **신규 파워 6종**: Constrict / HardToKill / Tender / Slow / Slippery / PaperCuts
+  (전부 Phase 6k 정찰에서 "미이식 파워"로 식별됐던 항목)
+
+### 엔진 확장 3건 + 버그 수정 2건
+
+1. **`Creature.lose_max_hp` 신설** — 원본 `CreatureCmd.LoseMaxHp`는 새 최대
+   HP가 현재 HP보다 낮으면 그 초과분을 `Unblockable|Unpowered` **피해로**
+   처리한 뒤 최대 HP를 `max(1, ...)`로 설정한다. 현재 HP를 직접 클램프하면
+   `hp_lost_this_turn`/`times_hp_lost` 집계와 `on_hp_lost` 훅이 누락되고,
+   최대 HP 전량 손실 시 원본은 사망하는데 이쪽은 HP 1로 생존하는 차이가 생김
+2. **`on_landed_attack` 훅에 피격 대상 전달** — 원본 `AfterDamageGiven`이
+   target을 받으므로 PaperCuts의 "플레이어를 맞혔을 때만" 조건 구현에 필요.
+   호출부(`MonsterModel.attack`)와 기존 유일 소비자 `SuckPower`를 동반 수정
+3. **`CombatState.notify_card_played` 신설** — 원본 `AfterCardPlayed`는 파워
+   소유자의 편과 무관하게 전투 내 모든 파워에 통지된다. 기존
+   `notify_player_powers`만으로는 몬스터가 스스로에게 건 `SlowPower`
+   (BygoneEffigy)가 플레이어의 카드 플레이를 영원히 세지 못함 — Phase 6k에서
+   같은 계열로 발견된 `on_enemy_turn_end` 누락 버그와 동일 패턴
+4. **`resolve_initial` 분기 체인 미해석 버그** — 초기 상태 분기가 다시 분기를
+   가리키는 경우(Exoskeleton INIT_MOVE의 fourth 슬롯 → RAND) 한 단계만 풀려
+   브랜치 노드가 현재 상태로 남고 `execute_move`에서 터졌다. `advance_state`가
+   이미 쓰던 while 루프 방식으로 통일해 수정
+5. **`test_sts2_phase6.py` Plating 기대값 갱신** — Phase 6l의 개전 즉시 지급
+   변경(정당한 동작 수정)을 낡은 6a 테스트가 따라가지 못해 실패하던 상태.
+   실제 코드가 원본과 일치함을 확인하고 테스트 쪽을 현행 사양으로 갱신
+
+### 이식 시 확인한 원본 세부 (오독하기 쉬운 지점)
+
+- **`AddBranch` 오버로드**(Phase 6k와 동일 함정): HunterKiller RAND의 `2`와
+  ScrollOfBiting rand의 `2`는 weight가 아니라 **maxRepeats**. 두 몬스터 모두
+  분기 base weight는 균등 1:1
+- **ExoskeletonsWeak는 슬롯이 3개**("first"/"second"/"third")뿐이라 fourth
+  슬롯의 RAND 시작 개체가 나오지 않는다
+- **ScrollsOfBitingNormal의 4번째 개체**는 `StarterMoveIdx = 2` **고정**이며
+  앞 3마리처럼 `(num+i)%3` 회전이 아니다
+- **SlitheringStranglerNormal의 소형 슬라임 2마리**는 각각 독립 추첨이라
+  같은 종이 두 번 나올 수 있다(기존 `slimes_weak`의 셔플 방식과 다름)
+- **MechaKnight 화상은 `PileType.Hand`** — 버림 더미가 아니라 손패로 직접 삽입
+- **Inklet의 `INIT_RAND`**는 생성만 되고 상태 목록·초기 상태 어디에도 쓰이지
+  않는 사문화 코드라 이식하지 않음. **BygoneEffigy의 `SLEEP_MOVE_2`**는 어떤
+  무브도 진입하지 않지만 상태 목록에는 있어 원본 구성 그대로 보존
+
 ## 🔬 생성 방법론 (Phase 6a/6j/6k)
 
 몬스터는 멀티에이전트 파이프라인으로 이식:
@@ -561,7 +656,9 @@ applier 인자 누락(무해), FossilStalker의 펫 제외/그룹핑 로직(펫 
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6k+ 참조 — 몬스터 잔여 ~66종(보스/다체 연동 포함,
-Possess 계열 신규 파워가 필요한 TheLost/TheForgotten/TheInsatiable 등),
-렐릭/포션 풀, 미이식 파워(Galvanic/Rampart/Dampen/HighVoltage 외 Phase 6k
-정찰로 확인된 28종 이상), Ascension, 실제 맵 그래프.
+ROADMAP.md의 Phase 6o+ 참조 — Vantom(전용 인카운터 부재로 6n에서 유예),
+몬스터 잔여 ~53종(보스/다체 연동 포함, Possess 계열 신규 파워가 필요한
+TheLost/TheForgotten/TheInsatiable, 전투 중 소환·슬롯 소비 구조가 필요한
+GremlinMerc/LivingFog/TwoTailedRat 등), 렐릭/포션 풀, 미이식 파워
+(Galvanic/Rampart/Dampen/HighVoltage 외 — 6n에서 Slippery/Constrict/
+HardToKill 3종 해소), Ascension, 실제 맵 그래프.
