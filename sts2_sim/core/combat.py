@@ -162,6 +162,20 @@ class CombatState:
             if fn:
                 fn(*hook_args)
 
+    def notify_card_played(self, card: "STS2Card") -> None:
+        """카드 플레이를 플레이어·몬스터 양측 파워에 통지.
+        원본 AfterCardPlayed는 소유자 편과 무관하게 전투 내 모든 파워에 전달된다
+        (BygoneEffigy의 SlowPower처럼 몬스터가 스스로에게 건 파워도 플레이어의
+        카드 플레이를 세어야 함) — 플레이어 파워만 통지하면 그런 파워가 영원히
+        누적되지 않는 버그가 생기므로 on_enemy_turn_end와 같은 방식으로 적 측에도
+        별도 통지한다."""
+        self.notify_player_powers("on_card_played", card, self)
+        for enemy in list(self.alive_enemies):
+            for power in list(enemy._powers.values()):
+                hook = getattr(power, "on_card_played", None)
+                if hook:
+                    hook(card, self)
+
     def _exhaust_card(self, card: "STS2Card") -> None:
         """카드 소모 + 소모 이벤트 통지."""
         self.exhaust_pile.append(card)
@@ -610,7 +624,7 @@ class CombatState:
 
         for relic in self.player.relics:
             relic.on_card_played(card)
-        self.notify_player_powers("on_card_played", card, self)
+        self.notify_card_played(card)
         self._broadcast_card_played(card, paid)  # RightHandHand — 버림 더미 회수
         self._trigger_strangle()
         self.reap_deaths()  # Melancholy — 사망 집계
@@ -756,7 +770,7 @@ class CombatState:
         self.player._first_attack_this_turn = False
         for relic in self.player.relics:
             relic.on_card_played(card)
-        self.notify_player_powers("on_card_played", card, self)
+        self.notify_card_played(card)
         self._auto_playing = prev_auto
         self._broadcast_card_played(card, 0)
         self._trigger_strangle()

@@ -141,8 +141,12 @@ class MonsterMoveStateMachine:
         self.history: List[str] = []  # 실행된 MoveState 이름 이력 (cooldown/max_repeats용)
 
     def resolve_initial(self) -> None:
-        """초기 상태가 branch 노드면 현재 rng로 해석."""
-        if isinstance(self.current_state, (RandomBranchState, ConditionalBranchState)):
+        """초기 상태가 branch 노드면 현재 rng로 해석.
+        분기가 다시 분기를 가리킬 수 있으므로(Exoskeleton INIT_MOVE의 fourth
+        슬롯 → RAND) advance_state와 동일하게 MoveState에 도달할 때까지
+        반복 해석한다 — 한 번만 풀면 브랜치 노드가 현재 상태로 남아
+        execute_move에서 터진다."""
+        while isinstance(self.current_state, (RandomBranchState, ConditionalBranchState)):
             self.current_state = self.current_state.resolve(self.rng, None, self.history)
 
     def get_current_intent(self) -> Intent:
@@ -267,13 +271,15 @@ class MonsterModel(Creature):
     def attack(self, target: Creature, base_damage: int) -> None:
         """공격 파이프라인 (자신의 Strength/Weak 반영).
         피해가 블록을 관통하면(hp_lost>0) 자신의 파워에 on_landed_attack 통지
-        (원본 SuckPower.AfterAttack — FossilStalker 등 자기 파워드 공격 적중 트리거)."""
+        (원본 AfterAttack/AfterDamageGiven — FossilStalker SuckPower의 자기 파워드
+        공격 적중 트리거, ScrollOfBiting PaperCutsPower의 대상 한정 최대 HP 감소).
+        원본 AfterDamageGiven이 target을 넘겨받으므로 훅에도 피격 대상을 전달한다."""
         result = target.take_damage(self.compute_attack_damage(base_damage), source=self)
         if result.get("hp_lost", 0) > 0:
             for p in list(self._powers.values()):
                 hook = getattr(p, "on_landed_attack", None)
                 if hook:
-                    hook()
+                    hook(target)
 
     def add_status_to_player_discard(self, card_id: str, count: int) -> None:
         """플레이어 버림 더미에 상태이상 카드 삽입 (Dazed/Slimed)."""

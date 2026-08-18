@@ -38,6 +38,10 @@ from sts2_sim.entities.monsters_batch9 import (
     CorpseSlug, SkulkingColony, TerrorEel, PhantasmalGardener, LagavulinMatriarch,
 )
 from sts2_sim.entities.monsters_batch10 import WaterfallGiant
+from sts2_sim.entities.monsters_batch11 import (
+    SlimedBerserker, SlitheringStrangler, Exoskeleton, HunterKiller,
+    MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting,
+)
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -99,6 +103,50 @@ def _phantasmal_gardeners(rng: random.Random) -> List[MonsterModel]:
     return gardeners
 
 
+def _exoskeletons(rng: random.Random, count: int) -> List[MonsterModel]:
+    """ExoskeletonsNormal(4)/Weak(3): 슬롯 first/second/third(/fourth) 고정 배정.
+    Exoskeleton의 INIT_MOVE가 슬롯으로 시작 무브를 결정하므로 슬롯 배정이 필수.
+    Weak는 슬롯이 3개뿐이라 fourth(RAND 시작) 개체가 나오지 않는다."""
+    slots = ("first", "second", "third", "fourth")[:count]
+    roaches = []
+    for slot in slots:
+        roach = Exoskeleton()
+        roach.slot_name = slot
+        roaches.append(roach)
+    return roaches
+
+
+def _inklets_normal(rng: random.Random) -> List[MonsterModel]:
+    """InkletsNormal: 3마리 중 가운데만 MiddleInklet=True (WHIRLWIND부터 시작)."""
+    return [Inklet(), Inklet(middle_inklet=True), Inklet()]
+
+
+def _scrolls_of_biting(rng: random.Random, count: int) -> List[MonsterModel]:
+    """ScrollsOfBitingNormal(4)/Weak(3): 앞 3마리는 무작위 시작 인덱스에서
+    +1씩 밀어 서로 다른 시작 무브를 갖고, Normal의 4번째만 인덱스 2 고정
+    (원본 GenerateMonsters — (num+3)%3 회전이 아니라 상수 2)."""
+    start = rng.randrange(3)
+    scrolls = [ScrollOfBiting(starter_move_idx=(start + i) % 3) for i in range(3)]
+    if count == 4:
+        scrolls.append(ScrollOfBiting(starter_move_idx=2))
+    return scrolls
+
+
+def _slithering_strangler_normal(rng: random.Random) -> List[MonsterModel]:
+    """SlitheringStranglerNormal: 보조 적 구성 3종 중 1개를 뽑고 마지막에
+    Strangler를 붙인다 — SnappingJaxfruit 1 / 중형 슬라임 1 / 소형 슬라임 2.
+    소형 2마리는 각각 독립 추첨이라 같은 종이 두 번 나올 수 있다 (원본
+    NextItem 2회 — slimes_weak의 셔플 방식과 다르다)."""
+    kind = rng.choice(("jaxfruit", "medium_slime", "small_slimes"))
+    if kind == "jaxfruit":
+        others: List[MonsterModel] = [SnappingJaxfruit()]
+    elif kind == "medium_slime":
+        others = [rng.choice([LeafSlimeM, TwigSlimeM])()]
+    else:
+        others = [rng.choice([LeafSlimeS, TwigSlimeS])() for _ in range(2)]
+    return [*others, SlitheringStrangler()]
+
+
 ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── 원본 구성 그대로 ──
     "slimes_weak": _slimes_weak,
@@ -150,6 +198,17 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     "lagavulin_matriarch_boss": lambda rng: [LagavulinMatriarch()],
     # ── Phase 6m ──
     "waterfall_giant_boss": lambda rng: [WaterfallGiant()],
+    # ── Phase 6n 배치11 (원본 구성 그대로) ──
+    "slimed_berserker_normal": lambda rng: [SlimedBerserker()],
+    "slithering_strangler_normal": _slithering_strangler_normal,
+    "exoskeletons_normal": lambda rng: _exoskeletons(rng, 4),
+    "exoskeletons_weak": lambda rng: _exoskeletons(rng, 3),
+    "hunter_killer_normal": lambda rng: [HunterKiller()],
+    "mecha_knight_elite": lambda rng: [MechaKnight()],
+    "bygone_effigy_elite": lambda rng: [BygoneEffigy()],
+    "inklets_normal": _inklets_normal,
+    "scrolls_of_biting_normal": lambda rng: _scrolls_of_biting(rng, 4),
+    "scrolls_of_biting_weak": lambda rng: _scrolls_of_biting(rng, 3),
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

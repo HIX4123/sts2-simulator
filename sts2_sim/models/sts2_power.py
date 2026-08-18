@@ -398,7 +398,7 @@ class SuckPower(STS2Power):
         super().__init__(amount)
         self._pending = 0
 
-    def on_landed_attack(self) -> None:
+    def on_landed_attack(self, target) -> None:
         self._pending += 1
 
     def flush_landed_attacks(self) -> None:
@@ -2857,6 +2857,147 @@ class SteamEruptionPower(STS2Power):
 
 
 # ══════════════════════════════════════════
+# Phase 6n — 배치11 (SlitheringStrangler/Exoskeleton/HunterKiller/
+# MechaKnight/BygoneEffigy/Inklet/ScrollOfBiting) 전용 파워
+# ══════════════════════════════════════════
+
+class ConstrictPower(STS2Power):
+    """속박 — 보유자의 턴 종료마다 amount만큼 자해 피해 (원본
+    ConstrictPower.AfterSideTurnEnd — Damage(target=Owner, dealer=Owner,
+    ValueProp.Unpowered): Unblockable이 아니므로 블록으로 막힌다).
+    부여한 적(applier)이 죽으면 제거된다 (AfterDeath).
+    SlitheringStrangler CONSTRICT가 플레이어에게 3 부여."""
+    power_id = "constrict"
+    name = "Constrict"
+    is_debuff = True
+
+    def on_turn_end(self) -> None:
+        owner = self.owner
+        if owner is not None and self.amount > 0:
+            # dealer==target이므로 Osty 대납(DieForYou) 경로를 타지 않는다
+            owner.take_damage(self.amount, source=owner, powered=False)
+
+    def on_any_death(self, dead) -> None:
+        if dead is self.applier:
+            self.remove()
+
+
+class HardToKillPower(STS2Power):
+    """처치 곤란 — 한 번에 받는 피해를 amount로 제한한다 (원본
+    HardToKillPower.ModifyDamageCap — target != Owner면 무제한, 아니면 Amount).
+    Intangible과 같은 Cap 단계라 Vulnerable 등 배율이 전부 적용된 뒤 마지막에
+    걸린다. 스택은 감소하지 않는다 (StackType.Counter). Exoskeleton 개전 9."""
+    power_id = "hard_to_kill"
+    name = "Hard To Kill"
+    is_debuff = False
+    damage_side = "incoming"
+
+    def modify_damage_cap(self, amount: int, source, powered: bool = True) -> Optional[int]:
+        return self.amount if self.amount > 0 else None
+
+
+class TenderPower(STS2Power):
+    """연함 — 보유자(플레이어)가 카드를 낼 때마다 힘·민첩이 1씩 깎이고, 자신의
+    턴 종료 시 그 턴에 깎인 만큼 한꺼번에 되돌려받는다 (원본 TenderPower —
+    AfterCardPlayed에서 -1/-1, AfterSideTurnEnd에서 +CardsPlayedThisTurn).
+    즉 한 턴 안에서만 유효한 누진 약화이며, 스택 수치(Amount)는 표시용일 뿐
+    감소량에 관여하지 않는다 (원본도 항상 1씩 고정). HunterKiller GOOP."""
+    power_id = "tender"
+    name = "Tender"
+    is_debuff = True
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.cards_played_this_turn = 0
+
+    def on_card_played(self, card, combat) -> None:
+        if self.owner is None:
+            return
+        self.cards_played_this_turn += 1
+        self.owner.apply_power(Strength(-1))
+        self.owner.apply_power(Dexterity(-1))
+
+    def on_turn_end(self) -> None:
+        if self.owner is None or self.cards_played_this_turn <= 0:
+            return
+        self.owner.apply_power(Strength(self.cards_played_this_turn))
+        self.owner.apply_power(Dexterity(self.cards_played_this_turn))
+        self.cards_played_this_turn = 0
+
+
+class SlowPower(STS2Power):
+    """둔화 — 플레이어가 이번 턴에 카드를 낸 장수 s마다 보유자가 받는 파워드
+    공격 피해가 10%씩 증가한다 (원본 SlowPower.ModifyDamageMultiplicative —
+    1 + 0.1*SlowAmount, IsPoweredAttack 게이트). 보유자의 턴 시작마다 s를
+    0으로 되돌린다 (AfterSideTurnStart). 배율은 원본이 decimal 정확 연산이므로
+    부동소수 오차로 경계값이 1 낮아지지 않도록 정수 연산으로 계산한다.
+    BygoneEffigy가 개전 시 스스로에게 부여 — 보유자가 몬스터이므로 카드 플레이
+    통지는 CombatState.notify_card_played의 적 측 통지 경로로 전달된다."""
+    power_id = "slow"
+    name = "Slow"
+    is_debuff = True
+    damage_side = "incoming"
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.slow_amount = 0
+
+    def on_card_played(self, card, combat) -> None:
+        self.slow_amount += 1
+
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        if powered and self.slow_amount > 0:
+            return amount * (10 + self.slow_amount) // 10
+        return amount
+
+    def on_turn_start(self) -> None:
+        self.slow_amount = 0
+
+
+class SlipperyPower(STS2Power):
+    """미끄러움 — 한 번에 잃는 HP를 1로 제한하고, 블록을 뚫린 피해를 받을
+    때마다 스택이 1 줄어든다 (원본 SlipperyPower — ModifyHpLostAfterOsty로
+    1 고정, AfterDamageReceived에서 UnblockedDamage>=1이면 Decrement).
+    Intangible과 달리 블록 흡수 이후의 HP 손실 단계에 작용하므로
+    HardenedShell과 같은 modify_hp_lost 파이프라인을 쓴다.
+    Inklet 개전 1 / Vantom 개전 8."""
+    power_id = "slippery"
+    name = "Slippery"
+    is_debuff = False
+
+    def modify_hp_lost(self, amount: int) -> int:
+        return 1 if self.amount > 0 and amount >= 1 else amount
+
+    def on_take_damage_powered(self, source, hp_lost: int, powered: bool) -> None:
+        if hp_lost < 1:
+            return
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
+class PaperCutsPower(STS2Power):
+    """종이 베임 — 보유자의 파워드 공격이 플레이어의 블록을 뚫을 때마다
+    플레이어의 최대 HP를 amount만큼 깎는다 (원본 PaperCutsPower.AfterDamageGiven
+    — dealer==Owner && target.IsPlayer && IsPoweredAttack && UnblockedDamage>0).
+    AfterAttack(무브 단위)이 아니라 AfterDamageGiven(피해 인스턴스 단위)이므로
+    다단히트는 적중한 히트 수만큼 발동한다 (SuckPower의 flush 방식과 대비).
+    ScrollOfBiting 개전 2."""
+    power_id = "paper_cuts"
+    name = "Paper Cuts"
+    is_debuff = False
+
+    def on_landed_attack(self, target) -> None:
+        owner = self.owner
+        if owner is None or self.amount <= 0:
+            return
+        combat = getattr(owner, "combat_state", None)
+        if combat is None or combat.player is not target:
+            return  # 원본 target.IsPlayer — 플레이어를 맞혔을 때만
+        target.lose_max_hp(self.amount)
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -3028,6 +3169,13 @@ POWER_REGISTRY = {
     "the_bomb": TheBombP,
     "the_gambit": TheGambitP,
     "steam_eruption": SteamEruptionPower,
+    # Phase 6n — 배치11
+    "constrict": ConstrictPower,
+    "hard_to_kill": HardToKillPower,
+    "tender": TenderPower,
+    "slow": SlowPower,
+    "slippery": SlipperyPower,
+    "paper_cuts": PaperCutsPower,
 }
 
 
