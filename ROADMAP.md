@@ -4,10 +4,29 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: Phase 6n 완료** — 카드 503종 / 파워 168종 / 몬스터 70종 /
-인카운터 51종 / 렐릭 22종 / 오브 5종, 루트 회귀 18스위트 전체 통과.
-다음은 [Phase 6o+](#-phase-6o--남은-확대-계획): 몬스터 잔여 ~52종, 렐릭·포션 풀,
-Ascension, 실제 맵 그래프.
+**현재 위치: Phase 6q 완료** — 카드 503종 / 파워 172종 / 몬스터 73종 /
+인카운터 54종 / 렐릭 22종 / 오브 5종, 루트 회귀 21스위트 전체 통과.
+
+원본(디컴파일 `Models.*`의 `: XxxModel` 파생 클래스) 대비 이식률:
+
+| 영역 | 이식 / 원본 | 비율 |
+|---|---|---|
+| 카드 | 503 / 593 | 85% |
+| 파워 | 172 / 248 | 69% |
+| 몬스터 | 73 / 117 | 62% |
+| 인카운터 | 54 / 88 | 61% |
+| 오브 | 5 / 5 | 100% |
+| **전투 코어 소계** | **807 / 1051** | **77%** |
+| 렐릭 | 22 / 297 | 7% |
+| 포션 | 0 / 64 | 0% |
+| 이벤트 | 0 / 59 | 0% |
+| **런 콘텐츠 소계** | **22 / 420** | **5%** |
+
+전투 자체는 약 77%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
+드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
+없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
+
+다음은 [Phase 6r+](#-phase-6r--남은-확대-계획).
 
 ---
 
@@ -448,18 +467,61 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
   변경을 낡은 6a 테스트가 따라가지 못해 실패하던 기존 이슈 해소
 - [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 24개 테스트) — 루트 18스위트 전체 통과
 
-## 📋 Phase 6o+ — 남은 확대 (계획)
+## ✅ Phase 6o — 전투 중 소환 엔진 (완료)
 
-- [ ] 몬스터 잔여 ~52종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
-  Mk1-3, Queen, TheLost/TheForgotten/TheInsatiable(Possess 계열 신규 파워 필요),
-  GremlinMerc/LivingFog/TwoTailedRat(전투 중 소환·슬롯 소비 구조 필요) 등 —
-  개발용 클래스인 DeprecatedMonster/FakeMerchantMonster/OneHpMonster/
-  TenHpMonster/TestSubject, 렐릭 전용 소환 펫(Byrdpip/PaelsLegion 등),
-  훈련용 더미(BattleFriendV3)는 제외한 실제 카운트)
-- [ ] 렐릭 풀 (`Models.RelicPools`), 포션 (`Models.PotionPools`)
-- [ ] 미이식 파워: GalvanicPower, RampartPower, DampenPower, HighVoltagePower 등
-  (6n에서 Slippery/Constrict/HardToKill 3종 해소 — Stock/Surprise/CrabRage/
-  Slumber/Minion 등 잔여)
+Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환 대상 Wriggler가
+이미 이식돼 있어 가장 단순한 소비자인 PhrogParasite로 검증했다.
+
+- [x] **`CombatState.add_monster(monster, slot_name)`** — 원본 `CreatureCmd.Add`.
+  전투 rng를 물려주고 `setup_for_combat`으로 HP/무브그래프/개전 파워 초기화.
+  `_combat_over` 플래그로 종료 후 소환 차단 (원본 `IsLiveCombat` 가드)
+- [x] **`ShouldStopCombatFromEnding` 대응** — 해당 파워가 남아 있으면 적이
+  전멸해 보여도 승리로 치지 않는다
+- [x] **`reap_deaths` 순회 안전성** — 사망 훅이 소환하면 `self.monsters`가
+  순회 중 변경되어 터지던 문제를 스냅샷 순회로 수정
+- [x] **InfestedPower + PhrogParasite(엘리트)** — 사망 시 Wriggler 4마리를
+  wriggler1~4 슬롯에 스턴 상태로 소환 (홀수 NASTY_BITE / 짝수 WRIGGLE)
+
+## ✅ Phase 6p — 슬롯 기반 소환 (완료)
+
+- [x] **인카운터 슬롯 목록 + `next_free_slot`** — 원본 `EncounterModel.Slots`와
+  `GetNextSlot`(생존 적이 차지하지 않은 첫 칸). `make_encounter`가 몬스터에
+  `encounter_id`를 새겨 소환체가 같은 슬롯 풀을 공유한다
+- [x] **`RandomBranchState` 확장**: weight에 callable 허용(원본 `Func<float>`
+  가중치 오버로드, 0이면 후보 제외) + `use_only_once`(`MoveRepeatType.UseOnlyOnce`)
+- [x] **TwoTailedRat** — CanSummon 4조건 전부 이식(2턴 지연, 전투 3회 상한을
+  같은 편이 공유, 빈 슬롯 존재, 동료의 중복 소환 예약 방지). 소환 가능 시
+  분기 가중치가 공격 1/12 · 소환 0.75로 전환된다
+
+## ✅ Phase 6q — GremlinMerc (완료)
+
+- [x] **ThieveryPower / SurprisePower / HeistPower** — 공격마다 골드 절취(보유량
+  상한), 사망 시 SneakyGremlin·FatGremlin 소환 + 훔친 골드 이관, 이관받은
+  그렘린을 잡으면 환수. FatGremlin은 다음 턴 도주하므로 놓치면 골드를 잃는다
+- [x] **GremlinMerc(HP 47~49)** + `gremlin_merc_normal` 인카운터 —
+  "미이식 몬스터 대체" 부분 구성이던 것을 원본 구성으로 복원
+
+## 📋 Phase 6r+ — 남은 확대 (계획)
+
+- [ ] **몬스터 잔여 32종** (인카운터가 실제로 배치하는 대상 기준. 개발용
+  클래스와 렐릭 전용 소환 펫(Byrdpip/PaelsLegion), 소환 전용 하위 엔티티는 제외):
+  - **Affliction 시스템 필요**: LivingFog+GasBomb(`SmoggyPower`가 카드에
+    Smog를 붙인다 — 카드 단위 상태 이상은 미구현 서브시스템)
+  - **다체 연동/특수 구조**: Fabricator+Axebot/Rocket(무작위 봇 소환),
+    Decimillipede 세그먼트 체인, TheAdversary Mk1-3, Queen, Aeonglass
+  - **Possess 계열 신규 파워**: TheLost / TheForgotten / TheInsatiable
+  - **단순 이식 가능(우선)**: Architect, CeremonialBeast, Crusher,
+    CubexConstruct, Entomancer, Fogmog, InfestedPrism, KinFollower,
+    KnowledgeDemon, Ovicopter, OwlMagistrate, SlumberingBeetle, SoulNexus,
+    TheObscura, ThievingHopper, TorchHeadAmalgam, ToughEgg, Tunneler,
+    Bowlbug 계열
+- [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 22종. 훅 표면은 이미 있어
+  대부분 훅 하나짜리 얕은 작업, 20~30종씩 묶어 진행
+- [ ] 포션 64종 (`Models.PotionPools`) — 포션 시스템 자체가 미구현
+- [ ] 이벤트 59종 — 실제 맵 그래프와 함께 진행해야 의미가 있다
+- [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 상점/이벤트 방 포함
+- [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
+- [ ] MCTS 정책 실험
 - [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
 - [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 업그레이드/보상 기회 확대로 엘리트 승률 개선
 - [ ] MCTS 정책 실험
@@ -491,7 +553,10 @@ python3 test_sts2_phase6j.py      # 몬스터 배치1 13종
 python3 test_sts2_phase6k.py      # 몬스터 배치8 8종 + 분기 오버로드 감사
 python3 test_sts2_phase6l.py      # 몬스터 배치9 5종 (Act1 완결)
 python3 test_sts2_phase6m.py      # WaterfallGiant 보스 (2단계 사망)
-python3 test_sts2_phase6n.py      # 몬스터 배치11 8종 + 파워 6종
+python3 test_sts2_phase6n.py      # 몬스터 배치11 9종 + 파워 6종
+python3 test_sts2_phase6o.py      # 전투 중 소환 엔진 + PhrogParasite
+python3 test_sts2_phase6p.py      # 슬롯 기반 소환 + TwoTailedRat
+python3 test_sts2_phase6q.py      # GremlinMerc (골드 절취/동료 소환)
 ```
 
 **통계 실행:**

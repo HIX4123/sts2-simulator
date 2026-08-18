@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 70종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
-| 인카운터 | 51종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
+| 몬스터 | 73종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
+| 인카운터 | 54종 | 실제 구성 로직 (부분 구성 2종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 168종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 파워 | 172종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 18개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 21개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 70종
+## 👹 몬스터 73종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -87,6 +87,10 @@ LagavulinMatriarch(보스)
 **Phase 6n 배치11 (monsters_batch11.py):** SlimedBerserker,
 SlitheringStrangler, Exoskeleton, HunterKiller, MechaKnight(엘리트),
 BygoneEffigy(엘리트), Inklet, ScrollOfBiting, Vantom(보스 — Doom 즉사 면역)
+
+**Phase 6o~6q 배치12 (monsters_batch12.py, 전투 중 소환 계열):**
+PhrogParasite(엘리트 — 사망 시 Wriggler 4마리), TwoTailedRat(슬롯 기반
+동족 소환), GremlinMerc(골드 절취 + 사망 시 동료 2종 소환)
 
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
@@ -646,6 +650,51 @@ LagavulinMatriarch 포함.
   않는 사문화 코드라 이식하지 않음. **BygoneEffigy의 `SLEEP_MOVE_2`**는 어떤
   무브도 진입하지 않지만 상태 목록에는 있어 원본 구성 그대로 보존
 
+## ✅ Phase 6o~6q — 전투 중 소환 계열
+
+Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조를 열고, 그에
+막혀 있던 몬스터 3종을 이식했다.
+
+### 엔진 (6o)
+
+- **`CombatState.add_monster(monster, slot_name)`** — 원본 `CreatureCmd.Add`.
+  전투 rng를 물려주고 `setup_for_combat`으로 초기화. `_combat_over` 플래그로
+  종료 후 소환을 차단한다 (원본 `IsLiveCombat` 가드)
+- **`_combat_is_won`에 `ShouldStopCombatFromEnding` 대응** — 해당 파워가
+  남아 있으면 적이 전멸해 보여도 승리로 치지 않는다
+- **`reap_deaths` 순회 안전성** — 사망 훅이 소환하면 `self.monsters`가 순회
+  중 변경돼 터졌다. 스냅샷 순회로 수정
+
+### 엔진 (6p)
+
+- **인카운터 슬롯 목록 + `next_free_slot`** — 원본 `EncounterModel.Slots` /
+  `GetNextSlot`. 생존한 적이 차지하지 않은 첫 칸을 반환하므로, 죽은 몬스터의
+  슬롯은 다시 채워질 수 있다 (TwoTailedRat이 실제로 그렇게 동작한다)
+- **`RandomBranchState` 확장 2건**:
+  * `weight`에 callable 허용 — 원본 `Func<float>` 가중치 오버로드. 가중치가
+    0이면 후보에서 제외되는 것까지 원본과 동일
+  * `use_only_once` — `MoveRepeatType.UseOnlyOnce`
+
+### 콘텐츠
+
+- **PhrogParasite(엘리트, 6o)**: INFECT(감염 3장) ↔ LASH(4딜×4). 개전
+  `InfestedPower(4)` — 사망 시 Wriggler 4마리가 wriggler1~4 슬롯에 스턴
+  상태로 소환된다 (홀수 슬롯 NASTY_BITE / 짝수 WRIGGLE)
+- **TwoTailedRat(6p)**: CanSummon 4조건 전부 이식 — 2턴 지연(무브 수행마다
+  감소), 전투 3회 상한(같은 편이 카운터 공유), 빈 슬롯 존재, 동료의 중복
+  소환 예약 방지. 소환 가능해지면 분기 가중치가 공격 1/12 · 소환 0.75로 바뀐다
+- **GremlinMerc(6q)**: 무브마다 골드 20 절취(보유량 상한), 사망 시
+  SneakyGremlin·FatGremlin 소환 + 훔친 골드를 FatGremlin에게 이관.
+  잡으면 환수, 도주하면 손실 — 원본 `CalculateGoldProportion`의 핵심 결과와 동일
+
+### 원본 소환 파워의 공통 이식 판단
+
+원본 `InfestedPower`/`SurprisePower`는 `ShouldStopCombatFromEnding()=true`를
+유지한 채 파워를 제거하지 않는다. 원본은 사망 훅이 비동기라 소환이 끝날
+때까지 승리 판정을 미루는 용도지만, 이 엔진은 사망 훅이 동기라 소환이 이미
+끝난 상태다 — 그대로 두면 승리가 영구히 차단되므로 **소환 직후 파워가
+스스로를 제거**하도록 했다. 관측 가능한 결과(소환 전 승리 오판 방지)는 동일하다.
+
 ## 🔬 생성 방법론 (Phase 6a/6j/6k)
 
 몬스터는 멀티에이전트 파이프라인으로 이식:
@@ -665,9 +714,14 @@ LagavulinMatriarch 포함.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6o+ 참조 —
-몬스터 잔여 ~52종(보스/다체 연동 포함, Possess 계열 신규 파워가 필요한
-TheLost/TheForgotten/TheInsatiable, 전투 중 소환·슬롯 소비 구조가 필요한
-GremlinMerc/LivingFog/TwoTailedRat 등), 렐릭/포션 풀, 미이식 파워
-(Galvanic/Rampart/Dampen/HighVoltage 외 — 6n에서 Slippery/Constrict/
-HardToKill 3종 해소), Ascension, 실제 맵 그래프.
+ROADMAP.md의 Phase 6r+ 참조 — 몬스터 잔여 32종(단순 이식 가능한 ~19종이
+우선, 나머지는 Affliction 시스템이 필요한 LivingFog 계열 / 다체 연동
+Fabricator·Decimillipede·TheAdversary·Queen / Possess 계열
+TheLost·TheForgotten·TheInsatiable), 렐릭 297종 풀, 포션 64종,
+이벤트 59종, 실제 맵 그래프, Ascension.
+
+**원본 대비 이식률** (디컴파일 `Models.*`의 `: XxxModel` 파생 클래스 기준):
+전투 코어(카드·파워·몬스터·인카운터·오브) **807/1051 ≈ 77%**,
+런 콘텐츠(렐릭·포션·이벤트) **22/420 ≈ 5%**. 클래스 수로 드러나지 않는
+공백으로 `core/run.py`의 축소된 런 루프(고정 층 시퀀스, 맵 그래프·상점·
+이벤트 방 없음)가 있다.
