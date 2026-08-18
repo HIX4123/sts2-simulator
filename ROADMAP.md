@@ -4,19 +4,19 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: Phase 6q 완료** — 카드 503종 / 파워 172종 / 몬스터 73종 /
-인카운터 54종 / 렐릭 22종 / 오브 5종, 루트 회귀 21스위트 전체 통과.
+**현재 위치: Phase 6r 완료** — 카드 503종 / 파워 173종 / 몬스터 75종 /
+인카운터 56종 / 렐릭 22종 / 오브 5종, 루트 회귀 22스위트 전체 통과.
 
 원본(디컴파일 `Models.*`의 `: XxxModel` 파생 클래스) 대비 이식률:
 
 | 영역 | 이식 / 원본 | 비율 |
 |---|---|---|
 | 카드 | 503 / 593 | 85% |
-| 파워 | 172 / 248 | 69% |
-| 몬스터 | 73 / 117 | 62% |
-| 인카운터 | 54 / 88 | 61% |
+| 파워 | 173 / 248 | 70% |
+| 몬스터 | 75 / 117 | 64% |
+| 인카운터 | 56 / 88 | 64% |
 | 오브 | 5 / 5 | 100% |
-| **전투 코어 소계** | **807 / 1051** | **77%** |
+| **전투 코어 소계** | **812 / 1051** | **77%** |
 | 렐릭 | 22 / 297 | 7% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
@@ -26,7 +26,7 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
 없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
 
-다음은 [Phase 6r+](#-phase-6r--남은-확대-계획).
+다음은 [Phase 6s+](#-phase-6s--남은-확대-계획).
 
 ---
 
@@ -501,20 +501,54 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
 - [x] **GremlinMerc(HP 47~49)** + `gremlin_merc_normal` 인카운터 —
   "미이식 몬스터 대체" 부분 구성이던 것을 원본 구성으로 복원
 
-## 📋 Phase 6r+ — 남은 확대 (계획)
+## ✅ Phase 6r — 배치13 (완료)
 
-- [ ] **몬스터 잔여 32종** (인카운터가 실제로 배치하는 대상 기준. 개발용
-  클래스와 렐릭 전용 소환 펫(Byrdpip/PaelsLegion), 소환 전용 하위 엔티티는 제외):
-  - **Affliction 시스템 필요**: LivingFog+GasBomb(`SmoggyPower`가 카드에
-    Smog를 붙인다 — 카드 단위 상태 이상은 미구현 서브시스템)
-  - **다체 연동/특수 구조**: Fabricator+Axebot/Rocket(무작위 봇 소환),
-    Decimillipede 세그먼트 체인, TheAdversary Mk1-3, Queen, Aeonglass
-  - **Possess 계열 신규 파워**: TheLost / TheForgotten / TheInsatiable
-  - **단순 이식 가능(우선)**: Architect, CeremonialBeast, Crusher,
-    CubexConstruct, Entomancer, Fogmog, InfestedPrism, KinFollower,
-    KnowledgeDemon, Ovicopter, OwlMagistrate, SlumberingBeetle, SoulNexus,
-    TheObscura, ThievingHopper, TorchHeadAmalgam, ToughEgg, Tunneler,
-    Bowlbug 계열
+- [x] **CubexConstruct**(HP 65) — 개전 블록 13 + Artifact 1,
+  CHARGE_UP → REPEATER_BLAST ×2 → EXPEL 순환하며 무브마다 힘 누적
+- [x] **SoulNexus**(엘리트, HP 234) — SOUL_BURN/MAELSTROM/DRAIN_LIFE
+  3분기, 전부 CannotRepeat
+- [x] **MinionPower** — 하수인 표식. 소유자 사망 후에도 유지
+  (`ShouldPowerBeRemovedAfterOwnerDeath=false`)
+
+## 📋 Phase 6s+ — 남은 확대 (계획)
+
+### 몬스터 잔여 30종 — 차단 요인별 분류
+
+인카운터가 실제로 배치하는 대상 기준(개발용 클래스, 렐릭 전용 소환 펫
+Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 파워"는
+디컴파일 원본을 스캔해 뽑은 것이므로 재조사 없이 그대로 쓸 것.**
+
+| 몬스터 | HP | 필요한 미이식 파워 | 비고 |
+|---|---|---|---|
+| ToughEgg | 14 | `HatchPower` | 부화 — Ovicopter의 소환 대상 |
+| Ovicopter | 124 | (`MinionPower` ✓) | ToughEgg 소환 — ToughEgg 선행 |
+| Tunneler | 87 | `BurrowedPower` | |
+| SlumberingBeetle | 86 | `SlumberPower` | Plating은 이미 있음 |
+| OwlMagistrate | 231 | `SoarPower` | |
+| InfestedPrism | 161 | `VitalSparkPower` | |
+| Entomancer | 145 | `PersonalHivePower` | |
+| CeremonialBeast | 252 | `PlowPower`, `RingingPower` | |
+| Crusher | 209 | `BackAttackLeftPower`, `CrabRagePower` | |
+| ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | |
+| KinFollower | 58 | (`MinionPower` ✓) | TheKin 보스 전용 |
+| TorchHeadAmalgam | 199 | (`MinionPower` ✓) | |
+| Fogmog | 74 | 없음 | EyeWithTeeth 소환 — 아래 스텁 정리 선행 |
+| TheObscura | 123 | 없음 | Parafright 소환 — 아래 스텁 정리 선행 |
+| KnowledgeDemon | 379 | 없음 | `IsBurnt` 상태 확인 필요 |
+| LivingFog + GasBomb | 80 / 7 | `SmoggyPower` | **Affliction 시스템**(카드 단위 상태이상) 필요 |
+| Fabricator + Axebot/Rocket | | | 무작위 봇 소환 |
+| Decimillipede 세그먼트 | | | 체인 연동 구조 |
+| TheAdversary Mk1-3, Queen, Aeonglass | | | 다체/보스 특수 구조 |
+| TheLost / TheForgotten / TheInsatiable | | Possess 계열 | |
+| Bowlbug 계열(Egg/Nectar/Rock/Silk) | | | 하위 엔티티 묶음 |
+
+- [ ] **선행 정리 — 스텁 몬스터 2종**: `Parafright`(HP 21)와
+  `EyeWithTeeth`(HP 6)는 `sts2_monster.py`에 "행동 단순화" 스텁으로만 있고
+  실제 동작이 원본과 다르다 (원본: Parafright는 16딜 SLAM, EyeWithTeeth는
+  공격이 아니라 Dazed 3장 삽입). 둘 다 개전 `IllusionPower`(사망 시 부활)를
+  받는다 — Fogmog/TheObscura를 이식하려면 이 둘을 먼저 정식 이식해야
+  검증되지 않은 토대 위에 쌓지 않는다
+- [ ] `Architect`(HP 9999, 무행동)는 연출/개발용 더미라 이식 대상에서 제외
 - [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 22종. 훅 표면은 이미 있어
   대부분 훅 하나짜리 얕은 작업, 20~30종씩 묶어 진행
 - [ ] 포션 64종 (`Models.PotionPools`) — 포션 시스템 자체가 미구현
@@ -557,6 +591,7 @@ python3 test_sts2_phase6n.py      # 몬스터 배치11 9종 + 파워 6종
 python3 test_sts2_phase6o.py      # 전투 중 소환 엔진 + PhrogParasite
 python3 test_sts2_phase6p.py      # 슬롯 기반 소환 + TwoTailedRat
 python3 test_sts2_phase6q.py      # GremlinMerc (골드 절취/동료 소환)
+python3 test_sts2_phase6r.py      # 배치13 (CubexConstruct/SoulNexus)
 ```
 
 **통계 실행:**

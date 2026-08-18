@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 73종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
-| 인카운터 | 54종 | 실제 구성 로직 (부분 구성 2종은 주석 표기) |
+| 몬스터 | 75종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
+| 인카운터 | 56종 | 실제 구성 로직 (부분 구성 2종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 172종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 파워 | 173종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 21개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 22개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 73종
+## 👹 몬스터 75종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -91,6 +91,9 @@ BygoneEffigy(엘리트), Inklet, ScrollOfBiting, Vantom(보스 — Doom 즉사 �
 **Phase 6o~6q 배치12 (monsters_batch12.py, 전투 중 소환 계열):**
 PhrogParasite(엘리트 — 사망 시 Wriggler 4마리), TwoTailedRat(슬롯 기반
 동족 소환), GremlinMerc(골드 절취 + 사망 시 동료 2종 소환)
+
+**Phase 6r 배치13 (monsters_batch13.py):** CubexConstruct(개전 블록13 +
+Artifact1, 무브마다 힘 누적), SoulNexus(엘리트, 3분기 CannotRepeat)
 
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
@@ -714,14 +717,12 @@ Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6r+ 참조 — 몬스터 잔여 32종(단순 이식 가능한 ~19종이
-우선, 나머지는 Affliction 시스템이 필요한 LivingFog 계열 / 다체 연동
-Fabricator·Decimillipede·TheAdversary·Queen / Possess 계열
-TheLost·TheForgotten·TheInsatiable), 렐릭 297종 풀, 포션 64종,
-이벤트 59종, 실제 맵 그래프, Ascension.
+ROADMAP.md의 **Phase 6s+** 참조 — 몬스터 잔여 30종. ROADMAP에 몬스터별
+필요 파워 표(디컴파일 스캔 결과)를 실어 두었으니 재조사 없이 그대로 쓸 것.
+그 밖에 렐릭 297종 풀, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension.
 
 **원본 대비 이식률** (디컴파일 `Models.*`의 `: XxxModel` 파생 클래스 기준):
-전투 코어(카드·파워·몬스터·인카운터·오브) **807/1051 ≈ 77%**,
+전투 코어(카드·파워·몬스터·인카운터·오브) **812/1051 ≈ 77%**,
 런 콘텐츠(렐릭·포션·이벤트) **22/420 ≈ 5%**. 클래스 수로 드러나지 않는
 공백으로 `core/run.py`의 축소된 런 루프(고정 층 시퀀스, 맵 그래프·상점·
 이벤트 방 없음)가 있다.
