@@ -7,8 +7,8 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 69종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant 포함) |
-| 인카운터 | 50종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
+| 몬스터 | 70종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
+| 인카운터 | 51종 | 실제 구성 로직 (부분 구성 3종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
 | 파워 | 168종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 69종
+## 👹 몬스터 70종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -86,7 +86,7 @@ LagavulinMatriarch(보스)
 
 **Phase 6n 배치11 (monsters_batch11.py):** SlimedBerserker,
 SlitheringStrangler, Exoskeleton, HunterKiller, MechaKnight(엘리트),
-BygoneEffigy(엘리트), Inklet, ScrollOfBiting
+BygoneEffigy(엘리트), Inklet, ScrollOfBiting, Vantom(보스 — Doom 즉사 면역)
 
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
@@ -588,13 +588,14 @@ LagavulinMatriarch 포함.
 
 ## ✅ Phase 6n — 몬스터 확대 2차 · 배치11
 
-몬스터 8종 + 신규 파워 6종 + 인카운터 10종 (`MONSTER_REGISTRY` 69종).
+몬스터 9종 + 신규 파워 6종 + 인카운터 11종 (`MONSTER_REGISTRY` 70종).
 
 - **`monsters_batch11.py`**: SlimedBerserker(신규 파워 불필요),
   SlitheringStrangler(`ConstrictPower`), Exoskeleton(`HardToKillPower`,
   슬롯별 시작 무브), HunterKiller(`TenderPower`), MechaKnight(엘리트,
   개전 Artifact 3 + 화상 4장을 **손패**로), BygoneEffigy(엘리트, `SlowPower`),
-  Inklet(`SlipperyPower`), ScrollOfBiting(`PaperCutsPower`)
+  Inklet(`SlipperyPower`), ScrollOfBiting(`PaperCutsPower`),
+  Vantom(보스, HP 173 + 개전 `SlipperyPower` 8 + `ShouldDisappearFromDoom=false`)
 - **신규 파워 6종**: Constrict / HardToKill / Tender / Slow / Slippery / PaperCuts
   (전부 Phase 6k 정찰에서 "미이식 파워"로 식별됐던 항목)
 
@@ -656,8 +657,8 @@ LagavulinMatriarch 포함.
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 Phase 6o+ 참조 — Vantom(전용 인카운터 부재로 6n에서 유예),
-몬스터 잔여 ~53종(보스/다체 연동 포함, Possess 계열 신규 파워가 필요한
+ROADMAP.md의 Phase 6o+ 참조 —
+몬스터 잔여 ~52종(보스/다체 연동 포함, Possess 계열 신규 파워가 필요한
 TheLost/TheForgotten/TheInsatiable, 전투 중 소환·슬롯 소비 구조가 필요한
 GremlinMerc/LivingFog/TwoTailedRat 등), 렐릭/포션 풀, 미이식 파워
 (Galvanic/Rampart/Dampen/HighVoltage 외 — 6n에서 Slippery/Constrict/

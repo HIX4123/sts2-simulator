@@ -407,14 +407,15 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
 
 ## ✅ Phase 6n — 몬스터 확대 2차 · 배치11 (완료)
 
-몬스터 8종 + 신규 파워 6종 + 인카운터 10종 (`MONSTER_REGISTRY` 69종).
+몬스터 9종 + 신규 파워 6종 + 인카운터 11종 (`MONSTER_REGISTRY` 70종).
 
 - [x] **배치11**: SlimedBerserker(고정 4순환, 신규 파워 불필요),
   SlitheringStrangler(신규 `ConstrictPower`), Exoskeleton(신규
   `HardToKillPower`, 슬롯별 시작 무브), HunterKiller(신규 `TenderPower`),
   MechaKnight(엘리트, 개전 Artifact 3 + 화상 4장을 **손패**로),
   BygoneEffigy(엘리트, 신규 `SlowPower`), Inklet(신규 `SlipperyPower`),
-  ScrollOfBiting(신규 `PaperCutsPower`)
+  ScrollOfBiting(신규 `PaperCutsPower`), Vantom(보스, HP 173 + 개전
+  Slippery 8 + `ShouldDisappearFromDoom=false` — Doom 즉사 면역)
 - [x] **신규 파워 6종**: Constrict(보유자 턴 종료마다 자해, 블록 적용,
   applier 사망 시 제거) / HardToKill(Cap 단계 피해 상한) / Tender(카드
   플레이마다 힘·민첩 -1, 자신 턴 종료 시 전량 복구) / Slow(이번 턴 카드
@@ -435,14 +436,11 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
   남아 `execute_move`에서 터지던 문제 — `advance_state`와 동일한 반복 해석으로 수정
 - [x] **`test_sts2_phase6.py` Plating 기대값 갱신**: Phase 6l의 개전 즉시 지급
   변경을 낡은 6a 테스트가 따라가지 못해 실패하던 기존 이슈 해소
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 21개 테스트) — 루트 18스위트 전체 통과
+- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 23개 테스트) — 루트 18스위트 전체 통과
 
 ## 📋 Phase 6o+ — 남은 확대 (계획)
 
-- [ ] **Vantom** — HP 173, 개전 Slippery 8, `ShouldDisappearFromDoom=false`,
-  고정 4순환(INK_BLOT/INKY_LANCE/DISMEMBER+상처 3장/PREPARE). 디컴파일
-  `Models.Encounters`에 전용 인카운터가 없어 배치할 자리가 없으므로 6n에서 유예
-- [ ] 몬스터 잔여 ~53종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
+- [ ] 몬스터 잔여 ~52종 (보스/다체 연동 포함: Aeonglass, Fabricator, TheAdversary
   Mk1-3, Queen, TheLost/TheForgotten/TheInsatiable(Possess 계열 신규 파워 필요),
   GremlinMerc/LivingFog/TwoTailedRat(전투 중 소환·슬롯 소비 구조 필요) 등 —
   개발용 클래스인 DeprecatedMonster/FakeMerchantMonster/OneHpMonster/

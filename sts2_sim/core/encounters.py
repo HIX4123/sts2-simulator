@@ -40,7 +40,7 @@ from sts2_sim.entities.monsters_batch9 import (
 from sts2_sim.entities.monsters_batch10 import WaterfallGiant
 from sts2_sim.entities.monsters_batch11 import (
     SlimedBerserker, SlitheringStrangler, Exoskeleton, HunterKiller,
-    MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting,
+    MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting, Vantom,
 )
 
 
@@ -209,6 +209,7 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     "inklets_normal": _inklets_normal,
     "scrolls_of_biting_normal": lambda rng: _scrolls_of_biting(rng, 4),
     "scrolls_of_biting_weak": lambda rng: _scrolls_of_biting(rng, 3),
+    "vantom_boss": lambda rng: [Vantom()],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

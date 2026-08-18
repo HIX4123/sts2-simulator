@@ -1,7 +1,8 @@
 """
-STS2 몬스터 배치 11 (Phase 6n) — 디컴파일 Models.Monsters.* 이식 (8종).
+STS2 몬스터 배치 11 (Phase 6n) — 디컴파일 Models.Monsters.* 이식 (9종).
 SlimedBerserker / SlitheringStrangler / Exoskeleton / HunterKiller /
-MechaKnight(엘리트) / BygoneEffigy(엘리트) / Inklet / ScrollOfBiting.
+MechaKnight(엘리트) / BygoneEffigy(엘리트) / Inklet / ScrollOfBiting /
+Vantom(보스).
 모든 수치는 Ascension 미적용 기본값 (AscensionHelper.GetValueIfAscension(..., tough,
 normal)의 normal/마지막 인자를 사용).
 
@@ -13,8 +14,6 @@ C# AddBranch 오버로드 주의 (CLAUDE.md 참조): 정수 인자는 weight가 
 여기서는 HunterKiller RAND의 "2"와 ScrollOfBiting rand의 "2"가 전부
 maxRepeats이며, 두 분기 모두 base weight는 1로 동일하다.
 
-Vantom(HP 173, Slippery 8, ShouldDisappearFromDoom=false)은 전용 인카운터가
-디컴파일 Encounters에 없어 배치할 자리가 없으므로 Phase 6o로 유예한다.
 """
 from __future__ import annotations
 from typing import List
@@ -377,6 +376,11 @@ class MechaKnight(MonsterModel):
 
     def _flamethrower_move(self, targets: List[Creature]) -> None:
         # 원본 CardPileCmd.AddToCombatAndPreview<Burn>(targets, PileType.Hand, 4)
+        # ponytail: generate_card(to="hand")는 손패 10장 상한을 넘는 분은 조용히
+        # 버린다 (원본은 넘친 카드를 버림 더미로 보낸다). 이 프로젝트의 단일
+        # 손패-삽입 경로가 공유하는 기존 동작이라 여기서만 우회하지 않는다 —
+        # 상한 초과가 실제로 문제되면 combat.generate_card에 오버플로 처리를
+        # 한 번 추가해 모든 호출자가 같이 고쳐지게 할 것.
         if self.combat_state is not None:
             self.combat_state.generate_card(
                 "burn", count=self.flamethrower_burn_count,
@@ -599,6 +603,98 @@ class ScrollOfBiting(MonsterModel):
         self.apply_power(Strength(self.more_teeth_strength_gain))
 
 
+class Vantom(MonsterModel):
+    """반톰 (보스) — HP 173, 개전 시 SlipperyPower(8)
+    (한 번에 잃는 HP가 1로 제한되고, 관통 피해를 받을 때마다 1 감소 —
+    실질적으로 초반 8히트를 1피해로 흘린다).
+    ShouldDisappearFromDoom=false — Doom 즉사로 제거되지 않는다.
+
+    원본(Vantom.cs) 그래프: INK_BLOT_MOVE(7딜) → INKY_LANCE_MOVE(6딜×2) →
+    DISMEMBER_MOVE(26딜 + 상처 3장을 버림 더미로) → PREPARE_MOVE(자신 힘 +2) →
+    INK_BLOT_MOVE → ... (고정 4순환, RNG 분기 없음)."""
+    monster_id = "vantom"
+    title = "Vantom"
+
+    @property
+    def min_initial_hp(self) -> int:
+        return 173
+
+    @property
+    def max_initial_hp(self) -> int:
+        return 173
+
+    @property
+    def slippery_amount(self) -> int:
+        return 8
+
+    @property
+    def ink_blot_damage(self) -> int:
+        return 7
+
+    @property
+    def inky_lance_damage(self) -> int:
+        return 6
+
+    @property
+    def inky_lance_repeat(self) -> int:
+        return 2
+
+    @property
+    def dismember_damage(self) -> int:
+        return 26
+
+    @property
+    def dismember_wounds(self) -> int:
+        return 3
+
+    @property
+    def prepare_strength_gain(self) -> int:
+        return 2
+
+    @property
+    def should_disappear_from_doom(self) -> bool:
+        return False
+
+    def after_added_to_room(self) -> None:
+        from sts2_sim.models.sts2_power import SlipperyPower
+        self.apply_power(SlipperyPower(self.slippery_amount))
+
+    def generate_move_state_machine(self) -> MonsterMoveStateMachine:
+        ink_blot = MoveState("INK_BLOT_MOVE", self._ink_blot_move,
+                             Intent(IntentType.ATTACK, damage=self.ink_blot_damage))
+        inky_lance = MoveState(
+            "INKY_LANCE_MOVE", self._inky_lance_move,
+            Intent(IntentType.ATTACK, damage=self.inky_lance_damage,
+                   times=self.inky_lance_repeat),
+        )
+        dismember = MoveState("DISMEMBER_MOVE", self._dismember_move,
+                              Intent(IntentType.ATTACK, damage=self.dismember_damage))
+        prepare = MoveState("PREPARE_MOVE", self._prepare_move, Intent(IntentType.BUFF))
+        ink_blot.follow_up_state = inky_lance
+        inky_lance.follow_up_state = dismember
+        dismember.follow_up_state = prepare
+        prepare.follow_up_state = ink_blot
+        return MonsterMoveStateMachine([ink_blot, inky_lance, dismember, prepare], ink_blot)
+
+    def _ink_blot_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.ink_blot_damage)
+
+    def _inky_lance_move(self, targets: List[Creature]) -> None:
+        for _ in range(self.inky_lance_repeat):
+            for target in targets:
+                self.attack(target, self.inky_lance_damage)
+
+    def _dismember_move(self, targets: List[Creature]) -> None:
+        for target in targets:
+            self.attack(target, self.dismember_damage)
+        self.add_status_to_player_discard("wound", self.dismember_wounds)
+
+    def _prepare_move(self, targets: List[Creature]) -> None:
+        from sts2_sim.models.sts2_power import Strength
+        self.apply_power(Strength(self.prepare_strength_gain))
+
+
 BATCH11_MONSTERS = {
     "slimed_berserker": SlimedBerserker,
     "slithering_strangler": SlitheringStrangler,
@@ -608,6 +704,7 @@ BATCH11_MONSTERS = {
     "bygone_effigy": BygoneEffigy,
     "inklet": Inklet,
     "scroll_of_biting": ScrollOfBiting,
+    "vantom": Vantom,
 }
 
 MONSTER_REGISTRY.update(BATCH11_MONSTERS)

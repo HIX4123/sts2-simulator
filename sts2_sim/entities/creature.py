@@ -257,17 +257,24 @@ class Creature:
         self._max_hp += amount
         self._current_hp = min(self._current_hp + max(0, amount), self._max_hp)
 
-    def lose_max_hp(self, amount: int, from_card: bool = False) -> None:
+    def lose_max_hp(self, amount: int) -> None:
         """최대 HP 감소 (원본 CreatureCmd.LoseMaxHp — PaperCutsPower 등).
         새 최대 HP가 현재 HP보다 낮으면 그 초과분을 먼저 Unblockable|Unpowered
-        피해로 처리한 뒤(현재 HP를 그냥 깎으면 hp_lost_this_turn/times_hp_lost
+        피해로 처리한다 — 현재 HP를 그냥 깎으면 hp_lost_this_turn/times_hp_lost
         집계와 on_hp_lost 트리거가 누락되고, 최대 HP 전량 손실 시 사망 대신
-        1로 살아남는 차이가 생긴다) 최대 HP를 최소 1로 낮춘다."""
+        1로 살아남는 차이가 생긴다.
+        이어서 최대 HP를 최소 1로 낮추고 현재 HP를 그 이하로 클램프한다
+        (원본 SetMaxHpInternal의 CurrentHp = Min(CurrentHp, MaxHp) — 위 피해가
+        Intangible 등 Cap 파이프라인에 막혀 현재 HP가 새 최대치보다 높게 남는
+        경우를 정리한다).
+        원본의 isFromCard 인자는 피해 props에 Move를 더할 뿐이고 Unpowered가
+        그대로 유지되어 IsPoweredAttack이 어느 쪽이든 false이므로 이식하지 않는다."""
         new_max_hp = self._max_hp - amount
         if new_max_hp < self._current_hp:
             self.take_damage(self._current_hp - new_max_hp, source=None,
                              powered=False, unblockable=True)
         self._max_hp = max(1, new_max_hp)
+        self._current_hp = min(self._current_hp, self._max_hp)
 
     def start_of_turn(self) -> None:
         """턴 시작: 블록 초기화 (Barricade/Blur 보유 시 유지), 턴별 카운터 리셋."""

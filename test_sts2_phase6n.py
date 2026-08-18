@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 STS2 Phase 6n 통합 테스트 — 배치11.
-몬스터 8종 (SlimedBerserker/SlitheringStrangler/Exoskeleton/HunterKiller/
-MechaKnight/BygoneEffigy/Inklet/ScrollOfBiting) + 신규 파워 6종
+몬스터 9종 (SlimedBerserker/SlitheringStrangler/Exoskeleton/HunterKiller/
+MechaKnight/BygoneEffigy/Inklet/ScrollOfBiting/Vantom) + 신규 파워 6종
 (Constrict/HardToKill/Tender/Slow/Slippery/PaperCuts) + 엔진 확장
 (Creature.lose_max_hp, on_landed_attack의 target 인자, 몬스터 파워에도
 카드 플레이를 통지하는 CombatState.notify_card_played).
@@ -17,21 +17,22 @@ from sts2_sim.entities.sts2_character import create_character
 from sts2_sim.entities.sts2_monster import MONSTER_REGISTRY, create_monster
 from sts2_sim.entities.monsters_batch11 import (
     SlimedBerserker, SlitheringStrangler, Exoskeleton, HunterKiller,
-    MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting,
+    MechaKnight, BygoneEffigy, Inklet, ScrollOfBiting, Vantom,
 )
 from sts2_sim.models.sts2_card import create_card
 from sts2_sim.models.sts2_power import (
     POWER_REGISTRY, ConstrictPower, HardToKillPower, TenderPower, SlowPower,
-    SlipperyPower, PaperCutsPower, Strength, Vulnerable,
+    SlipperyPower, PaperCutsPower, Doom, Intangible, Strength, Vulnerable,
 )
 
 NEW_MONSTERS = ("slimed_berserker", "slithering_strangler", "exoskeleton",
                 "hunter_killer", "mecha_knight", "bygone_effigy", "inklet",
-                "scroll_of_biting")
+                "scroll_of_biting", "vantom")
 NEW_ENCOUNTERS = ("slimed_berserker_normal", "slithering_strangler_normal",
                   "exoskeletons_normal", "exoskeletons_weak", "hunter_killer_normal",
                   "mecha_knight_elite", "bygone_effigy_elite", "inklets_normal",
-                  "scrolls_of_biting_normal", "scrolls_of_biting_weak")
+                  "scrolls_of_biting_normal", "scrolls_of_biting_weak",
+                  "vantom_boss")
 
 
 def make_combat(monsters, seed=42, player_hp=None):
@@ -54,7 +55,7 @@ def test_registry_and_encounters():
         assert POWER_REGISTRY[pid] is cls, f"미등록/불일치 파워: {pid}"
     for eid in NEW_ENCOUNTERS:
         assert eid in ENCOUNTERS, f"미등록 인카운터: {eid}"
-    print("✅ 몬스터 8종 + 파워 6종 + 인카운터 10종 등록 확인")
+    print("✅ 몬스터 9종 + 파워 6종 + 인카운터 11종 등록 확인")
 
 
 def test_hp_ranges():
@@ -68,12 +69,13 @@ def test_hp_ranges():
         "bygone_effigy": (127, 127),
         "inklet": (11, 17),
         "scroll_of_biting": (30, 37),
+        "vantom": (173, 173),
     }
     for mid, (lo, hi) in expected.items():
         m = create_monster(mid)
         assert m.min_initial_hp == lo and m.max_initial_hp == hi, \
             f"{mid} HP 범위 불일치: {m.min_initial_hp}~{m.max_initial_hp} (기대 {lo}~{hi})"
-    print("✅ HP 범위 8종 전부 디컴파일 기준값과 일치")
+    print("✅ HP 범위 9종 전부 디컴파일 기준값과 일치")
 
 
 def test_slimed_berserker_fixed_cycle():
@@ -503,8 +505,59 @@ def test_slithering_strangler_encounter_composition():
     print("✅ slithering_strangler_normal 보조 적 구성 + Strangler 마지막 배치 확인")
 
 
+def test_vantom_boss_cycle_slippery_and_doom_immunity():
+    """Vantom: 개전 Slippery 8, 고정 4순환(7딜 / 6딜×2 / 26딜+상처3 / 힘+2),
+    Doom 즉사 면역."""
+    vantom = Vantom()
+    combat, player = make_combat([vantom], seed=20, player_hp=500)
+    sm = vantom._move_state_machine
+    assert vantom.get_power_amount("slippery") == 8
+
+    assert sm.get_current_move_name() == "INK_BLOT_MOVE"
+    hp = player.current_hp
+    vantom.take_turn([player])
+    assert player.current_hp == hp - 7, "INK_BLOT 7딜 불일치"
+    assert sm.get_current_move_name() == "INKY_LANCE_MOVE"
+
+    hp = player.current_hp
+    vantom.take_turn([player])
+    assert player.current_hp == hp - 6 * 2, "INKY_LANCE 6딜×2 불일치"
+    assert sm.get_current_move_name() == "DISMEMBER_MOVE"
+
+    hp = player.current_hp
+    vantom.take_turn([player])
+    assert player.current_hp == hp - 26, "DISMEMBER 26딜 불일치"
+    wounds = [c for c in combat.discard_pile if c.card_id == "wound"]
+    assert len(wounds) == 3, f"상처 3장이 버림 더미에 없음: {len(wounds)}"
+    assert sm.get_current_move_name() == "PREPARE_MOVE"
+
+    vantom.take_turn([player])
+    assert vantom.get_power_amount("strength") == 2, "PREPARE 힘 +2 불일치"
+    assert sm.get_current_move_name() == "INK_BLOT_MOVE", "4순환 복귀 실패"
+
+    # Doom 즉사 면역 (원본 ShouldDisappearFromDoom => false)
+    assert vantom.should_disappear_from_doom is False
+    vantom.apply_power(Doom(999))
+    combat._trigger_doom()
+    assert vantom.is_alive, "Doom이 Vantom을 제거함"
+    print("✅ Vantom 보스 Slippery8 + 4순환(7/6x2/26+상처3/힘2) + Doom 면역 확인")
+
+
+def test_lose_max_hp_with_damage_cap_keeps_current_hp_within_max():
+    """Intangible 등 Cap이 초과분 피해를 1로 막아도 현재 HP가 새 최대 HP를
+    넘지 않아야 한다 (원본 SetMaxHpInternal의 CurrentHp = Min(CurrentHp, MaxHp))."""
+    combat, player = make_combat([create_monster("big_dummy")], seed=21, player_hp=80)
+    player._current_hp = 80
+    player.apply_power(Intangible(5))
+    player.lose_max_hp(20)
+    assert player.max_hp == 60, f"최대 HP 60이 아님: {player.max_hp}"
+    assert player.current_hp <= player.max_hp, \
+        f"Cap이 개입해 현재 HP({player.current_hp})가 최대 HP({player.max_hp})를 초과함"
+    print("✅ lose_max_hp: 피해 Cap 개입 시에도 현재 HP ≤ 최대 HP 유지 확인")
+
+
 def test_seeded_smoke():
-    """신규 인카운터 10종 × 3시드 전투 스모크."""
+    """신규 인카운터 11종 × 3시드 전투 스모크."""
     for eid in NEW_ENCOUNTERS:
         for seed in range(3):
             player = Player(create_character("ironclad"))
@@ -512,7 +565,7 @@ def test_seeded_smoke():
             combat = CombatState(player, monsters, seed=seed)
             result = combat.run(SimplePolicy(), max_turns=80)
             assert isinstance(result.victory, bool)
-    print("✅ 신규 인카운터 10종 × 3시드 전투 스모크 통과")
+    print("✅ 신규 인카운터 11종 × 3시드 전투 스모크 통과")
 
 
 def main():
@@ -537,19 +590,21 @@ def main():
     test_scroll_starter_moves_and_chew_max_repeats()
     test_scrolls_encounter_starter_indices()
     test_slithering_strangler_encounter_composition()
+    test_vantom_boss_cycle_slippery_and_doom_immunity()
+    test_lose_max_hp_with_damage_cap_keeps_current_hp_within_max()
     test_seeded_smoke()
 
     print("\n" + "=" * 60)
     print("✅ Phase 6n 전체 테스트 통과!")
     print("=" * 60)
     print("\n📊 Phase 6n 구현 현황:")
-    print("  ✅ 몬스터 8종 (SlimedBerserker/SlitheringStrangler/Exoskeleton/")
-    print("     HunterKiller/MechaKnight/BygoneEffigy/Inklet/ScrollOfBiting)")
+    print("  ✅ 몬스터 9종 (SlimedBerserker/SlitheringStrangler/Exoskeleton/")
+    print("     HunterKiller/MechaKnight/BygoneEffigy/Inklet/ScrollOfBiting/")
+    print("     Vantom(보스))")
     print("  ✅ 신규 파워 6종 (Constrict/HardToKill/Tender/Slow/Slippery/PaperCuts)")
     print("  ✅ 엔진 확장: Creature.lose_max_hp, on_landed_attack(target),")
     print("     몬스터 파워에도 카드 플레이 통지 (notify_card_played)")
-    print("  ✅ 신규 인카운터 10종 등록")
-    print("  ⏸ Vantom은 전용 인카운터 부재로 Phase 6o 유예")
+    print("  ✅ 신규 인카운터 11종 등록")
 
 
 if __name__ == "__main__":
