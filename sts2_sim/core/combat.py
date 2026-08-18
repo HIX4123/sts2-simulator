@@ -209,7 +209,11 @@ class CombatState:
                       to: str = "discard", creator_is_player: bool = True) -> List["STS2Card"]:
         """전투 중 카드 생성 (AddGeneratedCardToCombat 대응).
         플레이어가 생성했으면 파워 훅(Smokestack/TrashToTreasure)과
-        카드 훅 on_card_generated_combat(RocketPunch)에 통지."""
+        카드 훅 on_card_generated_combat(RocketPunch)에 통지.
+        to="hand"인데 손패가 상한(10)이면 원본 CardPileCmd.Add의
+        isFullHandAdd 분기(targetPile = Discard)대로 버림 더미로 보낸다 —
+        예전처럼 조용히 버리면 MechaKnight FLAMETHROWER(화상 4장)처럼
+        한 번에 여러 장을 손패로 넣는 무브에서 카드가 사라진다."""
         made = []
         for _ in range(count):
             card = create_card(card_id)
@@ -217,8 +221,11 @@ class CombatState:
                 continue
             if upgraded:
                 card.upgrade()
-            if to == "hand" and len(self.hand) < 10:
-                self.hand.append(card)
+            if to == "hand":
+                if len(self.hand) < 10:
+                    self.hand.append(card)
+                else:
+                    self.discard_pile.append(card)
             elif to == "draw":
                 self.draw_pile.append(card)
             elif to == "draw_random":  # CardPilePosition.Random 대응 (SoulFysh Beckon 등)

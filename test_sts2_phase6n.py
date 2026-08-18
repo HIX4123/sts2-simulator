@@ -301,6 +301,26 @@ def test_mecha_knight_cycle_artifact_and_burn_to_hand():
     print("✅ MechaKnight Artifact3 + CHARGE→화상4(손패)→WINDUP→CLEAVE→FLAMETHROWER 확인")
 
 
+def test_flamethrower_hand_overflow_goes_to_discard():
+    """손패가 가득 차면 화상 초과분이 사라지지 않고 버림 더미로 간다
+    (원본 CardPileCmd.Add의 isFullHandAdd → targetPile = Discard)."""
+    knight = MechaKnight()
+    combat, player = make_combat([knight], seed=22, player_hp=500)
+    sm = knight._move_state_machine
+    knight.take_turn([player])  # CHARGE
+    assert sm.get_current_move_name() == "FLAMETHROWER_MOVE"
+
+    combat.hand = [create_card("strike") for _ in range(8)]
+    combat.discard_pile = []
+    knight.take_turn([player])
+    in_hand = [c for c in combat.hand if c.card_id == "burn"]
+    in_discard = [c for c in combat.discard_pile if c.card_id == "burn"]
+    assert len(combat.hand) == 10, f"손패 상한 10 초과/미달: {len(combat.hand)}"
+    assert len(in_hand) == 2, f"손패에 들어간 화상이 2장이 아님: {len(in_hand)}"
+    assert len(in_discard) == 2, f"초과분 2장이 버림 더미로 가지 않음: {len(in_discard)}"
+    print("✅ MechaKnight 화상: 손패 상한 초과분이 버림 더미로 이동 확인")
+
+
 def test_slow_scales_incoming_damage_with_cards_played():
     """Slow: 플레이어가 이번 턴 낸 카드 수만큼 받는 파워드 피해 +10%/장,
     보유자 턴 시작 시 초기화. 몬스터 파워도 카드 플레이를 통지받아야 한다."""
@@ -581,6 +601,7 @@ def main():
     test_tender_reduces_str_dex_per_card_and_restores_at_turn_end()
     test_hunter_killer_puncture_max_repeats()
     test_mecha_knight_cycle_artifact_and_burn_to_hand()
+    test_flamethrower_hand_overflow_goes_to_discard()
     test_slow_scales_incoming_damage_with_cards_played()
     test_bygone_effigy_sleep_wake_slash()
     test_slippery_caps_hp_loss_and_decrements()

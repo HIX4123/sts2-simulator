@@ -375,12 +375,9 @@ class MechaKnight(MonsterModel):
             self.attack(target, self.charge_damage)
 
     def _flamethrower_move(self, targets: List[Creature]) -> None:
-        # 원본 CardPileCmd.AddToCombatAndPreview<Burn>(targets, PileType.Hand, 4)
-        # ponytail: generate_card(to="hand")는 손패 10장 상한을 넘는 분은 조용히
-        # 버린다 (원본은 넘친 카드를 버림 더미로 보낸다). 이 프로젝트의 단일
-        # 손패-삽입 경로가 공유하는 기존 동작이라 여기서만 우회하지 않는다 —
-        # 상한 초과가 실제로 문제되면 combat.generate_card에 오버플로 처리를
-        # 한 번 추가해 모든 호출자가 같이 고쳐지게 할 것.
+        # 원본 CardPileCmd.AddToCombatAndPreview<Burn>(targets, PileType.Hand, 4).
+        # 손패 상한(10) 초과분은 generate_card가 버림 더미로 돌린다
+        # (원본 CardPileCmd.Add의 isFullHandAdd 분기와 동일).
         if self.combat_state is not None:
             self.combat_state.generate_card(
                 "burn", count=self.flamethrower_burn_count,
