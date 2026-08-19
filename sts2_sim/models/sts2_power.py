@@ -3166,6 +3166,27 @@ class HeistPower(STS2Power):
         self.amount = 0
 
 
+class HatchPower(STS2Power):
+    """부화 카운터 — 소유자(ToughEgg)의 각 턴 종료마다 -1 (원본 HatchPower.AfterSideTurnEnd).
+
+    원본은 순수 카운터(PowerStackType.Counter)로 실제 부화 게이팅은 상태머신의
+    HATCH_MOVE가 담당한다. 인텐트/AI 예측에 관여하는 부수 효과 없이 표시용으로만
+    존재하지만, 원본대로 개전 적용해 두면 사망 후에도 ShouldBeRemovedAfterOwnerDeath
+    기본값(true)에 따라 자연히 정리된다. HATCH_MOVE는 명시적으로 이 파워를 제거한다."""
+    power_id = "hatch"
+    name = "Hatch"
+    is_debuff = False
+
+    def on_turn_end(self) -> None:
+        # 원본 AfterSideTurnEnd(참가자 포함 시 Decrement). 이 시뮬레이터의 on_turn_end는
+        # 몬스터 자신 턴 종료마다 호출된다 (원본 참가자 필터와 동일한 결과).
+        if self.owner is None or self.amount <= 0:
+            return
+        self.amount -= 1
+        if self.amount <= 0:
+            self.remove()
+
+
 class SurprisePower(STS2Power):
     """기습 — 보유자가 죽으면 SneakyGremlin과 FatGremlin이 튀어나오고,
     훔쳐둔 골드가 FatGremlin의 HeistPower로 옮겨간다 (원본 SurprisePower.AfterDeath).
@@ -3389,6 +3410,8 @@ POWER_REGISTRY = {
     "thievery": ThieveryPower,
     "heist": HeistPower,
     "surprise": SurprisePower,
+    # Phase 6t — 배치15 (Ovicopter/ToughEgg)
+    "hatch": HatchPower,
 }
 
 

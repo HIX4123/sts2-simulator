@@ -695,6 +695,12 @@ class CombatState:
         from sts2_sim.core.encounters import get_next_slot
         return get_next_slot(self.encounter_id, self.monsters)
 
+    def last_free_slot(self) -> Optional[str]:
+        """아직 비어 있는 마지막 슬롯 (원본 Ovicopter의 Slots.LastOrDefault).
+        Ovicopter는 알 슬롯을 뒤에서부터 채우므로 first-free와 결과가 다르다."""
+        from sts2_sim.core.encounters import get_last_free_slot
+        return get_last_free_slot(self.encounter_id, self.monsters)
+
     def reap_deaths(self) -> None:
         """새 사망 episode를 집계하고 사망 훅·owner 파워 정리를 수행한다.
 

@@ -45,6 +45,7 @@ from sts2_sim.entities.monsters_batch11 import (
 from sts2_sim.entities.monsters_batch12 import GremlinMerc, PhrogParasite, TwoTailedRat
 from sts2_sim.entities.monsters_batch13 import CubexConstruct, SoulNexus
 from sts2_sim.entities.monsters_batch14 import Fogmog, TheObscura
+from sts2_sim.entities.monsters_batch15 import ToughEgg, Ovicopter
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -245,6 +246,9 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # 시작은 본체 1마리뿐이고 "illusion" 슬롯은 ILLUSION_MOVE가 채운다.
     "fogmog_normal": lambda rng: [_slotted(Fogmog(), "fogmog")],
     "the_obscura_normal": lambda rng: [_slotted(TheObscura(), "obscura")],
+    # ── Phase 6t 배치15 (알 낳기/부화) ──
+    # 시작은 Ovicopter 1마리. 알 슬롯(egg1~5)은 LAY_EGGS_MOVE가 뒤에서부터 채운다.
+    "ovicopter_normal": lambda rng: [_slotted(Ovicopter(), "ovicopter")],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류
@@ -268,6 +272,7 @@ ENCOUNTER_SLOTS: Dict[str, List[str]] = {
     "the_obscura_normal": ["illusion", "obscura"],
     "exoskeletons_normal": ["first", "second", "third", "fourth"],
     "exoskeletons_weak": ["first", "second", "third"],
+    "ovicopter_normal": ["egg1", "egg2", "egg3", "egg4", "egg5", "ovicopter"],
 }
 
 
@@ -279,6 +284,20 @@ def get_next_slot(encounter_id: Optional[str], monsters: List[MonsterModel]) -> 
         return None
     taken = {m.slot_name for m in monsters if not m.is_gone}
     for slot in slots:
+        if slot not in taken:
+            return slot
+    return None
+
+
+def get_last_free_slot(encounter_id: Optional[str], monsters: List[MonsterModel]) -> Optional[str]:
+    """아직 아무도 차지하지 않은 마지막 슬롯 (원본 Ovicopter의
+    Slots.LastOrDefault(빈 칸)). Ovicopter가 알을 뒤에서부터 채운다.
+    슬롯이 정의되지 않았거나 전부 찼으면 None."""
+    slots = ENCOUNTER_SLOTS.get(encounter_id or "")
+    if not slots:
+        return None
+    taken = {m.slot_name for m in monsters if not m.is_gone}
+    for slot in reversed(slots):
         if slot not in taken:
             return slot
     return None
