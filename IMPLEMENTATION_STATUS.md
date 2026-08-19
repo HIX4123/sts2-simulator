@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 75종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
-| 인카운터 | 56종 | 실제 구성 로직 (부분 구성 2종은 주석 표기) |
+| 몬스터 | 79종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
+| 인카운터 | 59종 | 실제 구성 로직 (부분 구성 2종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 173종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 파워 | 175종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 22개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 24개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 75종
+## 👹 몬스터 79종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -95,6 +95,15 @@ PhrogParasite(엘리트 — 사망 시 Wriggler 4마리), TwoTailedRat(슬롯 �
 **Phase 6r 배치13 (monsters_batch13.py):** CubexConstruct(개전 블록13 +
 Artifact1, 무브마다 힘 누적), SoulNexus(엘리트, 3분기 CannotRepeat)
 
+**Phase 6s 배치14 (monsters_batch14.py):** Fogmog(IllusionPower — 피해를
+받으면 스택 1 소모하며 무효화), TheObscura
+
+**Phase 6t 배치15 (monsters_batch15.py):** ToughEgg(개전 HP 14~18 +
+HatchPower2, 첫 턴 HATCH_MOVE로 Minion 외 모든 파워 제거 + HP 19~22 재설정 →
+NIBBLE 4딜 무한 반복), Ovicopter(LAY_EGGS로 빈 알 슬롯을 **뒤에서부터** 최대
+3칸 ToughEgg+Minion 소환 → SMASH16 → TENDERIZER 7딜+취약2 → SUMMON_BRANCH
+{살아있는 적 ≤3 ? LAY_EGGS : NUTRITIONAL_PASTE 힘+3 → SMASH})
+
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
 FrogKnight HP 절반), ConditionalBranchState(슬롯·상태 조건 순차 평가 —
@@ -107,7 +116,9 @@ PunchConstruct/PhantasmalGardener/Exoskeleton), 다단히트 파워 소급반영
 방지(SuckPower.flush_landed_attacks — Phase 6k), 몬스터 자기부여 파워의
 적턴종료 감쇠(Intangible — Phase 6k), 사망 인터셉트·부활(SteamEruption —
 Phase 6m), 피해 상한 Cap 단계(Intangible/HardToKill), HP 손실 상한
-(HardenedShell/Slippery), 최대 HP 감소(PaperCuts — Phase 6n).
+(HardenedShell/Slippery), 최대 HP 감소(PaperCuts — Phase 6n),
+피해 무효 스택(IllusionPower — Phase 6s), 역순 빈 슬롯 소환
+(CombatState.last_free_slot — 원본 LastOrDefault 대응, Phase 6t).
 
 ## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
 
@@ -717,7 +728,7 @@ Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 **Phase 6s+** 참조 — 몬스터 잔여 30종. ROADMAP에 몬스터별
+ROADMAP.md의 **Phase 6u+** 참조 — 몬스터 잔여 26종. ROADMAP에 몬스터별
 필요 파워 표(디컴파일 스캔 결과)를 실어 두었으니 재조사 없이 그대로 쓸 것.
 그 밖에 렐릭 297종 풀, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension.
 

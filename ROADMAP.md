@@ -4,19 +4,19 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: Phase 6r 완료** — 카드 503종 / 파워 173종 / 몬스터 75종 /
-인카운터 56종 / 렐릭 22종 / 오브 5종, 루트 회귀 22스위트 전체 통과.
+**현재 위치: Phase 6t 완료** — 카드 503종 / 파워 175종 / 몬스터 79종 /
+인카운터 59종 / 렐릭 22종 / 오브 5종, 루트 회귀 24스위트 전체 통과.
 
 원본(디컴파일 `Models.*`의 `: XxxModel` 파생 클래스) 대비 이식률:
 
 | 영역 | 이식 / 원본 | 비율 |
 |---|---|---|
 | 카드 | 503 / 593 | 85% |
-| 파워 | 173 / 248 | 70% |
-| 몬스터 | 75 / 117 | 64% |
-| 인카운터 | 56 / 88 | 64% |
+| 파워 | 175 / 248 | 71% |
+| 몬스터 | 79 / 117 | 68% |
+| 인카운터 | 59 / 88 | 67% |
 | 오브 | 5 / 5 | 100% |
-| **전투 코어 소계** | **812 / 1051** | **77%** |
+| **전투 코어 소계** | **821 / 1051** | **78%** |
 | 렐릭 | 22 / 297 | 7% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
@@ -26,7 +26,7 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
 없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
 
-다음은 [Phase 6s+](#-phase-6s--남은-확대-계획).
+다음은 [Phase 6u+](#-phase-6u--남은-확대-계획).
 
 ---
 
@@ -510,9 +510,30 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
 - [x] **MinionPower** — 하수인 표식. 소유자 사망 후에도 유지
   (`ShouldPowerBeRemovedAfterOwnerDeath=false`)
 
-## 📋 Phase 6s+ — 남은 확대 (계획)
+## ✅ Phase 6s — 배치14 (완료)
 
-### 몬스터 잔여 30종 — 차단 요인별 분류
+- [x] **IllusionPower** — 피해를 받으면 스택 1을 소모하며 그 피해를 무효화
+- [x] **EyeWithTeeth / Parafright** 스텁 2종을 정식 이식으로 승격
+- [x] **Fogmog**(HP 74) / **TheObscura**(HP 123) — 각각 EyeWithTeeth /
+  Parafright 소환
+
+## ✅ Phase 6t — 배치15 (완료)
+
+- [x] **HatchPower** — 턴 종료마다 카운터 1 감소(표시용). 실제 부화는
+  `HATCH_MOVE`가 수행
+- [x] **ToughEgg**(HP 14~18) — 개전 `HatchPower(2)`, 첫 턴 부화로 Minion을
+  제외한 모든 파워를 제거하고 HP를 19~22로 재설정 → `NIBBLE` 4딜 무한 반복
+- [x] **Ovicopter**(HP 124~130) — `LAY_EGGS`(빈 알 슬롯을 **뒤에서부터**
+  최대 3칸 ToughEgg + `MinionPower(1)`) → `SMASH` 16 → `TENDERIZER` 7딜 +
+  취약 2 → `SUMMON_BRANCH`{살아있는 적 ≤3 ? `LAY_EGGS` :
+  `NUTRITIONAL_PASTE` 힘 +3 → `SMASH`}
+- [x] **`CombatState.last_free_slot`** — 원본 `LastOrDefault` 대응 역순 빈
+  슬롯 탐색 (`encounters.get_last_free_slot`)
+- [x] **`ovicopter_normal`** 인카운터 (슬롯 `egg1`~`egg5` + `ovicopter`)
+
+## 📋 Phase 6u+ — 남은 확대 (계획)
+
+### 몬스터 잔여 26종 — 차단 요인별 분류
 
 인카운터가 실제로 배치하는 대상 기준(개발용 클래스, 렐릭 전용 소환 펫
 Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 파워"는
@@ -520,8 +541,6 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 
 | 몬스터 | HP | 필요한 미이식 파워 | 비고 |
 |---|---|---|---|
-| ToughEgg | 14 | `HatchPower` | 부화 — Ovicopter의 소환 대상 |
-| Ovicopter | 124 | (`MinionPower` ✓) | ToughEgg 소환 — ToughEgg 선행 |
 | Tunneler | 87 | `BurrowedPower` | |
 | SlumberingBeetle | 86 | `SlumberPower` | Plating은 이미 있음 |
 | OwlMagistrate | 231 | `SoarPower` | |
@@ -532,8 +551,6 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 | ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | |
 | KinFollower | 58 | (`MinionPower` ✓) | TheKin 보스 전용 |
 | TorchHeadAmalgam | 199 | (`MinionPower` ✓) | |
-| Fogmog | 74 | 없음 | EyeWithTeeth 소환 — 아래 스텁 정리 선행 |
-| TheObscura | 123 | 없음 | Parafright 소환 — 아래 스텁 정리 선행 |
 | KnowledgeDemon | 379 | 없음 | `IsBurnt` 상태 확인 필요 |
 | LivingFog + GasBomb | 80 / 7 | `SmoggyPower` | **Affliction 시스템**(카드 단위 상태이상) 필요 |
 | Fabricator + Axebot/Rocket | | | 무작위 봇 소환 |
@@ -542,12 +559,6 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 | TheLost / TheForgotten / TheInsatiable | | Possess 계열 | |
 | Bowlbug 계열(Egg/Nectar/Rock/Silk) | | | 하위 엔티티 묶음 |
 
-- [ ] **선행 정리 — 스텁 몬스터 2종**: `Parafright`(HP 21)와
-  `EyeWithTeeth`(HP 6)는 `sts2_monster.py`에 "행동 단순화" 스텁으로만 있고
-  실제 동작이 원본과 다르다 (원본: Parafright는 16딜 SLAM, EyeWithTeeth는
-  공격이 아니라 Dazed 3장 삽입). 둘 다 개전 `IllusionPower`(사망 시 부활)를
-  받는다 — Fogmog/TheObscura를 이식하려면 이 둘을 먼저 정식 이식해야
-  검증되지 않은 토대 위에 쌓지 않는다
 - [ ] `Architect`(HP 9999, 무행동)는 연출/개발용 더미라 이식 대상에서 제외
 - [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 22종. 훅 표면은 이미 있어
   대부분 훅 하나짜리 얕은 작업, 20~30종씩 묶어 진행
