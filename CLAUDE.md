@@ -18,6 +18,8 @@ The final goal is an AI mod capable of clearing Slay the Spire 2. Work toward it
 
 The repository is currently in the simulation stage. Prioritize simulation fidelity, coverage, and deterministic regression checks over speculative AI or mod infrastructure. Keep policy code separable from game mechanics, but do not add future-facing interfaces or integration layers until the current stage needs them.
 
+New work uses the hierarchical Stage/Milestone/Batch IDs defined in `ROADMAP.md` (for example, `S1.M3.B18`); do not create new alphabetic Phase suffixes. Preserve existing `test_sts2_phase*.py` names as historical IDs. For new regression files, replace dots with underscores (for example, `test_sts2_s1_m3_b18.py`), while runtime monster modules continue their domain sequence (for example, `monsters_batch18.py`).
+
 ## Commands
 
 Run commands from the repository root. Test scripts print emoji, so force UTF-8 on Windows to avoid a cp949 `UnicodeEncodeError` unrelated to test behavior.

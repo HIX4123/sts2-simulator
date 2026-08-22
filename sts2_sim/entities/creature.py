@@ -162,7 +162,8 @@ class Creature:
             amount = min(amount, cap)
 
         if amount <= 0:
-            return {"hp_lost": 0, "damage": 0, "killed": False}
+            return {"hp_lost": 0, "damage": 0, "killed": False,
+                    "fully_blocked": False}
 
         if unblockable:
             block_absorbed = 0
@@ -170,6 +171,14 @@ class Creature:
             block_absorbed = min(self._block, amount)
             self._block -= block_absorbed
         hp_lost = self.lose_hp(amount - block_absorbed, from_damage=True)
+
+        # 원본 AfterBlockBroken — 블록이 있었는데 이 피해로 전부 소진된 순간에만
+        # 1회 발동 (BurrowedPower: Tunneler를 굴 밖으로 끌어내 기절시킨다).
+        if block_absorbed > 0 and self._block == 0:
+            for p in list(self._powers.values()):
+                on_broken = getattr(p, "on_block_broken", None)
+                if on_broken:
+                    on_broken()
 
         # Reflect — 블록으로 막은 파워드 공격 피해를 공격자에게 반사
         if block_absorbed > 0 and source is not None:
@@ -188,8 +197,22 @@ class Creature:
                     if on_hit:
                         on_hit(source, hp_lost)
 
+        # 원본 Hook.AfterDamageReceived — UnblockedDamage 게이트가 없으므로 블록에
+        # 전부 막힌 피해에도 발동한다(PersonalHivePower). 대상이 이 피해로 죽은
+        # 경우에만 건너뛴다(원본 !WasTargetKilled || !IsDead).
+        if not self.is_dead and source is not None:
+            for p in list(self._powers.values()):
+                hook = getattr(p, "on_damage_received", None)
+                if hook:
+                    hook(source, hp_lost, powered)
+
         # damage = 파워 수정 후 총 피해량(블록 흡수 포함) — BlightStrike/ReaperForm 등이 참조
-        return {"hp_lost": hp_lost, "damage": amount, "killed": self.is_dead}
+        return {
+            "hp_lost": hp_lost,
+            "damage": amount,
+            "killed": self.is_dead,
+            "fully_blocked": not unblockable and block_absorbed == amount,
+        }
 
     def compute_modified_block(self, amount: int, card_sourced: bool = False,
                                 powered: bool = True) -> int:
@@ -277,8 +300,10 @@ class Creature:
         self._current_hp = min(self._current_hp, self._max_hp)
 
     def start_of_turn(self) -> None:
-        """턴 시작: 블록 초기화 (Barricade/Blur 보유 시 유지), 턴별 카운터 리셋."""
-        if not self.has_power("barricade") and not self.has_power("blur"):
+        """턴 시작: 블록 초기화 (Barricade/Blur/Burrowed 보유 시 유지 — 원본
+        ShouldClearBlock이 false를 반환하는 파워들), 턴별 카운터 리셋."""
+        if not (self.has_power("barricade") or self.has_power("blur")
+                or self.has_power("burrowed")):
             self._block = 0
         self.hp_lost_this_turn = 0
 

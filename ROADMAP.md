@@ -4,29 +4,69 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: Phase 6t 완료** — 카드 503종 / 파워 175종 / 몬스터 79종 /
-인카운터 59종 / 렐릭 22종 / 오브 5종, 루트 회귀 24스위트 전체 통과.
+**현재 위치: `S1.M3.B18 — 몬스터·인카운터 배치 18` 완료** — 카드 503종 /
+파워 180종 / 몬스터 89종 / 인카운터 68종 / 렐릭 22종 / 오브 5종,
+루트 회귀 27스위트 전체 통과.
+
+## 작업 단위와 ID 규약
+
+새 작업은 **Stage → Milestone → Batch** 계층으로 관리한다.
+
+| 단위 | ID | 정의 | 완료 조건 |
+|---|---|---|---|
+| Stage | `S<n>` | 제품 생애주기의 최상위 목표 | 소속 Milestone을 모두 닫고 제품 수준의 종료 조건을 충족 |
+| Milestone | `S<n>.M<n>` | Stage 안의 검증 가능한 기능·커버리지 게이트 | 정해진 능력과 커버리지를 회귀 검증으로 입증 |
+| Batch | `S<n>.M<n>.B<n>` | 한 번의 구현·리뷰·회귀 검증으로 닫는 전달 단위 | 원본 대조, 해당 최소 회귀, 루트 전체 회귀 통과 |
+
+- ID에는 한국어 제목을 함께 쓴다(예: `S1.M3.B18 — 몬스터·인카운터 배치 18`).
+- 번호는 각 상위 단위 안에서 단조 증가시키며 완료된 ID를 재사용하거나 재번호화하지 않는다.
+- 새 회귀 파일은 점을 underscore로 바꾼 `test_sts2_s1_m3_b18.py` 형식을 쓴다.
+  기존 `test_sts2_phase*.py`와 역사적 Phase 제목은 호환성과 이력 보존을 위해 바꾸지 않는다.
+- 런타임 콘텐츠 모듈은 일정 ID와 분리해 기존 계보(`monsters_batch18.py`)를 잇는다.
+
+### 제품 Stage와 현재 S1 Milestone
+
+| ID | 이름 | 범위 및 종료 조건 |
+|---|---|---|
+| `S1` | 시뮬레이터 | 전체 런에 필요한 게임 시스템을 충실하고 시드 재현 가능하게 시뮬레이션 |
+| `S1.M1` | 시뮬레이터 기반 | 전투 모델, 캐릭터, 카드·파워·오브의 기초 모델 완성 |
+| `S1.M2` | 실행·평가 루프 | 전투·축소 런 루프와 재현 가능한 baseline 정책·통계 실행 완성 |
+| `S1.M3` | 원본 충실도·콘텐츠 완성 | 원본 대조 기반 전투·런 시스템과 필수 콘텐츠를 전체 런 범위까지 확장 |
+| `S2` | 클리어 AI | 완성된 시뮬레이터에서 클리어 정책을 구축하고 재현 가능한 평가로 입증 |
+| `S3` | 라이브 모드 | 검증된 AI를 실제 게임에 통합하고 라이브 동작을 검증 |
+
+### 기존 Phase 대응표
+
+| 역사적 이름 | 새 체계 | 비고 |
+|---|---|---|
+| Phase 1~3 | `S1.M1 시뮬레이터 기반` | 코어 모델, 실제 캐릭터, Orb |
+| Phase 4~5 | `S1.M2 실행·평가 루프` | Phase 5 정책은 S2 AI가 아닌 시뮬레이터 검증용 baseline |
+| Phase 6a~6v | `S1.M3 원본 충실도·콘텐츠 완성` | 카드 풀, 엔진 훅, 몬스터·인카운터 확대 |
+
+Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
+`6m=B10`, `6n=B11`, `6o~6q=B12` 기능·콘텐츠 조각, `6r~6v=B13~B17`이다.
+이 계보를 이어 다음 작업부터 새 ID를 적용한다.
 
 원본(디컴파일 `Models.*`의 `: XxxModel` 파생 클래스) 대비 이식률:
 
 | 영역 | 이식 / 원본 | 비율 |
 |---|---|---|
 | 카드 | 503 / 593 | 85% |
-| 파워 | 175 / 248 | 71% |
-| 몬스터 | 79 / 117 | 68% |
-| 인카운터 | 59 / 88 | 67% |
+| 파워 | 180 / 248 | 73% |
+| 몬스터 | 89 / 117 | 76% |
+| 인카운터 | 68 / 88 | 77% |
 | 오브 | 5 / 5 | 100% |
-| **전투 코어 소계** | **821 / 1051** | **78%** |
+| **전투 코어 소계** | **845 / 1051** | **80%** |
 | 렐릭 | 22 / 297 | 7% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
 | **런 콘텐츠 소계** | **22 / 420** | **5%** |
 
-전투 자체는 약 77%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
+전투 자체는 약 80%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
 없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
 
-다음은 [Phase 6u+](#-phase-6u--남은-확대-계획).
+다음은 [`S1.M3.B19 — 후속 구현 배치 19`](#-s1m3b19--후속-구현-배치-19-계획).
 
 ---
 
@@ -531,9 +571,76 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
   슬롯 탐색 (`encounters.get_last_free_slot`)
 - [x] **`ovicopter_normal`** 인카운터 (슬롯 `egg1`~`egg5` + `ovicopter`)
 
-## 📋 Phase 6u+ — 남은 확대 (계획)
+## ✅ Phase 6u — 배치16 (완료)
 
-### 몬스터 잔여 26종 — 차단 요인별 분류
+- [x] **BurrowedPower** — 원본 `ShouldClearBlock`이 소유자 본인에게만 false를
+  반환해 블록이 턴 시작에 초기화되지 않는다. `AfterBlockBroken`(블록이 있었고
+  이 피해로 전부 소진된 순간 1회)에 `GetStunned` → `Stun(StillDizzyMove,
+  "BITE_MOVE")` → 파워 제거 순으로 발동하고, `AfterRemoved`의
+  `LoseBlock(999999999)`을 `remove()` 자체에 붙여 어떤 제거 경로로도 잔여
+  블록을 들고 나오지 못하게 했다
+- [x] **SlumberPower** — 두 감소 경로의 **결과가 다르다**는 점이 핵심:
+  피해(`AfterDamageReceived`, `UnblockedDamage != 0`)로 0이 되면
+  `Stun(WakeUpMove, "ROLL_OUT_MOVE")`이라 기상이 **다음 턴의 행동**이 되고,
+  턴 종료(`AfterSideTurnEnd`)로 0이 되면 `WakeUpMove`를 그 자리에서 실행하고
+  상태머신은 건드리지 않아 `SNORE`가 한 번 더 남는다
+- [x] **SoarPower** — `ModifyDamageMultiplicative`로 소유자가 받는 **파워드**
+  공격 피해 50% 감소 (`IsPoweredAttack` 게이트)
+- [x] **Tunneler**(HP 87) — `BITE` 13 → `BURROW`(Burrowed + 블록 32) →
+  `BELOW` 23 무한 반복. 블록을 전부 깨야만 굴에서 끌려나와 `DIZZY` 1턴 후
+  `BITE`부터 재개
+- [x] **SlumberingBeetle**(HP 86) — 개전 `Plating` 15 + `Slumber` 3 →
+  `SNORE` ↔ `SNORE_NEXT`{Slumber 보유? `SNORE` : `ROLL_OUT`} →
+  `ROLL_OUT` 16딜 + 자기 힘 +2 무한 반복. 기상 시 Plating 상실
+- [x] **OwlMagistrate**(HP 231) — `MAGISTRATE_SCRUTINY` 16 → `PECK_ASSAULT`
+  4딜 ×6 → `JUDICIAL_FLIGHT`(Soar) → `VERDICT` 33딜 + 취약 4 & Soar 제거 → 순환
+- [x] **인카운터 4종** — `tunneler_normal`(원본 그대로 Chomper(ScreamFirst) +
+  Tunneler), `tunneler_weak`, `slumbering_beetle_normal`(부분 구성 — 원본의
+  BowlbugRock/BowlbugSilk 미이식), `owl_magistrate_normal`
+
+## ✅ Phase 6v — 배치17 (완료)
+
+- [x] **AfterDamageReceived 훅** — 양수 공격이 블록에 전부 막혀도 대상 파워에
+  통지하되, 그 피해로 대상이 죽은 경우에는 건너뛰도록 원본 `CreatureCmd` 순서로
+  `Creature.take_damage`에 배선
+- [x] **PersonalHivePower** — Entomancer가 플레이어의 파워드 공격을 받을 때마다
+  공격자의 뽑을 더미 무작위 위치에 `Dazed`를 amount장 생성. 완전 블록에도
+  발동하고, 언파워드 피해와 치명타 사망에는 발동하지 않는다
+- [x] **Entomancer**(HP 145) — 개전 PersonalHive 1, `BEES` 3×7 → `SPEAR` 18 →
+  `PHEROMONE_SPIT`{벌집 <3 ? 벌집 +1 & 힘 +1 : 힘 +2} 순환
+- [x] **KinFollower**(HP 58~59) — 개전 Minion 1, `QUICK_SLASH` 5 →
+  `BOOMERANG` 2×2 → `POWER_DANCE` 힘 +2 순환. `starts_with_dance` 개체는
+  Dance부터 시작
+- [x] **TorchHeadAmalgam**(HP 199) — 개전 Minion 1, 강태클 18×2는 개전
+  한 번뿐이고 이후 `BEAM` 8×3 → 약태클 14×2를 반복
+- [x] **인카운터 3종** — `entomancer_elite`, `kin_followers_weak`(KinPriest
+  미이식 부분 구성), `torch_head_amalgam_normal`(Queen 미이식 부분 구성)
+
+## ✅ `S1.M3.B18 — 몬스터·인카운터 배치 18` (완료)
+
+- [x] **완전 블록 결과 훅** — `Creature.take_damage()`가 블록 흡수량에 근거한
+  `fully_blocked`를 반환하고, `MonsterModel.attack()`이 공격자 파워의
+  `on_damage_given(target, result)`에 결과 전체를 통지. 실제 HP 손실 전용
+  `on_landed_attack` 경계는 유지해 `Buffer`와 `SuckPower` 의미를 보존
+- [x] **강제 상태 전환 보존** — 실행할 무브를 callback 전에 history에 기록하고,
+  callback이 `stun()` 등으로 현재 상태를 바꾸면 같은 턴 자동 advance를 생략해
+  다음 턴 `STUNNED` 상태가 사라지던 공용 상태 머신 버그 수정
+- [x] **ImbalancedPower** — 보유자의 공격이 전부 막히면 일반 몬스터는 기절하고,
+  BowlbugRock은 `is_off_balance`로 전환. Single 재적용은 중첩하지 않음
+- [x] **Bowlbug 4종** — Egg(7딜+블록7 반복), Nectar(3딜→힘+15→공격 반복),
+  Rock(15딜, 완전 블록 시 DIZZY), Silk(약화1 시작, 4×2와 교대)
+- [x] **인카운터 2종** — `bowlbugs_weak`, `bowlbugs_normal`의 원본 슬롯과
+  시드 기반 무작위 구성을 재현
+- [x] **`slumbering_beetle_normal` 복원** — BowlbugRock + BowlbugSilk +
+  SlumberingBeetle 원본 3체 구성으로 복원
+- [x] `test_sts2_s1_m3_b18.py` 및 루트 회귀 27스위트 전체 통과
+
+## 📋 `S1.M3.B19 — 후속 구현 배치 19` (계획)
+
+아래 잔여 대상 중 선행 의존성이 작은 묶음을 원본 대조 후 선정한다. Affliction,
+Curse 선택, 다체 보스처럼 별도 엔진이 필요한 대상은 한 Batch에 억지로 섞지 않는다.
+
+### 몬스터 잔여 16종 — 차단 요인별 분류
 
 인카운터가 실제로 배치하는 대상 기준(개발용 클래스, 렐릭 전용 소환 펫
 Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 파워"는
@@ -541,23 +648,16 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 
 | 몬스터 | HP | 필요한 미이식 파워 | 비고 |
 |---|---|---|---|
-| Tunneler | 87 | `BurrowedPower` | |
-| SlumberingBeetle | 86 | `SlumberPower` | Plating은 이미 있음 |
-| OwlMagistrate | 231 | `SoarPower` | |
-| InfestedPrism | 161 | `VitalSparkPower` | |
-| Entomancer | 145 | `PersonalHivePower` | |
+| InfestedPrism | 161 | `VitalSparkPower` | Affliction/Tainted 시스템 필요 |
 | CeremonialBeast | 252 | `PlowPower`, `RingingPower` | |
-| Crusher | 209 | `BackAttackLeftPower`, `CrabRagePower` | |
+| Crusher | 209 | `BackAttackLeftPower`, `CrabRagePower` | Rocket과 함께 등장 |
 | ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | |
-| KinFollower | 58 | (`MinionPower` ✓) | TheKin 보스 전용 |
-| TorchHeadAmalgam | 199 | (`MinionPower` ✓) | |
-| KnowledgeDemon | 379 | 없음 | `IsBurnt` 상태 확인 필요 |
+| KnowledgeDemon | 379 | 없음 | Curse 선택 카드/즉시 선택 효과 필요 |
 | LivingFog + GasBomb | 80 / 7 | `SmoggyPower` | **Affliction 시스템**(카드 단위 상태이상) 필요 |
 | Fabricator + Axebot/Rocket | | | 무작위 봇 소환 |
 | Decimillipede 세그먼트 | | | 체인 연동 구조 |
 | TheAdversary Mk1-3, Queen, Aeonglass | | | 다체/보스 특수 구조 |
 | TheLost / TheForgotten / TheInsatiable | | Possess 계열 | |
-| Bowlbug 계열(Egg/Nectar/Rock/Silk) | | | 하위 엔티티 묶음 |
 
 - [ ] `Architect`(HP 9999, 무행동)는 연출/개발용 더미라 이식 대상에서 제외
 - [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 22종. 훅 표면은 이미 있어
@@ -566,9 +666,6 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 - [ ] 이벤트 59종 — 실제 맵 그래프와 함께 진행해야 의미가 있다
 - [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 상점/이벤트 방 포함
 - [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
-- [ ] MCTS 정책 실험
-- [ ] Ascension 수치 분기 (`AscensionHelper` — 현재 기본값만)
-- [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 업그레이드/보상 기회 확대로 엘리트 승률 개선
 - [ ] MCTS 정책 실험
 
 ---
@@ -603,6 +700,11 @@ python3 test_sts2_phase6o.py      # 전투 중 소환 엔진 + PhrogParasite
 python3 test_sts2_phase6p.py      # 슬롯 기반 소환 + TwoTailedRat
 python3 test_sts2_phase6q.py      # GremlinMerc (골드 절취/동료 소환)
 python3 test_sts2_phase6r.py      # 배치13 (CubexConstruct/SoulNexus)
+python3 test_sts2_phase6s.py      # 배치14 (Fogmog/TheObscura)
+python3 test_sts2_phase6t.py      # 배치15 (ToughEgg/Ovicopter)
+python3 test_sts2_phase6u.py      # 배치16 (Tunneler/SlumberingBeetle/OwlMagistrate)
+python3 test_sts2_phase6v.py      # 배치17 (Entomancer/KinFollower/TorchHeadAmalgam)
+python3 test_sts2_s1_m3_b18.py    # 배치18 (Bowlbug 4종/Imbalanced/인카운터)
 ```
 
 **통계 실행:**

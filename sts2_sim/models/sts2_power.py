@@ -3187,6 +3187,142 @@ class HatchPower(STS2Power):
             self.remove()
 
 
+class BurrowedPower(STS2Power):
+    """굴파기 — 보유자(Tunneler)의 블록이 턴 시작에 초기화되지 않는다
+    (원본 ShouldClearBlock: 소유자 본인에게만 false).
+
+    블록이 전부 깨지면(AfterBlockBroken) 굴 밖으로 끌려나와 기절하고, 다음 턴은
+    StillDizzyMove만 수행한 뒤 BITE_MOVE부터 재개한다. 파워가 제거될 때는 남은
+    블록을 전부 잃는다(원본 AfterRemoved의 LoseBlock 999999999) — 굴 안에 쌓아둔
+    방어를 들고 나오지 못하게 하는 장치라 remove() 자체에 붙여야 한다
+    (기절 경로 외에 다른 제거 경로가 생겨도 동일하게 적용되도록)."""
+    power_id = "burrowed"
+    name = "Burrowed"
+    is_debuff = False
+
+    def on_block_broken(self) -> None:
+        get_stunned = getattr(self.owner, "get_stunned", None)
+        if get_stunned is not None:
+            get_stunned()
+        self.remove()
+
+    def remove(self) -> None:
+        owner = self.owner
+        super().remove()
+        if owner is not None:
+            owner._block = 0
+
+
+class SlumberPower(STS2Power):
+    """잠듦 — 보유자(SlumberingBeetle)가 실제 피해를 입거나(AfterDamageReceived,
+    UnblockedDamage != 0) 자기 턴이 끝날 때마다(AfterSideTurnEnd) 1씩 줄고,
+    0이 되면 깨어난다.
+
+    두 경로의 결과가 다르다는 점이 핵심이다. 피해로 깨면 원본은
+    `CreatureCmd.Stun(owner, WakeUpMove, "ROLL_OUT_MOVE")` — 다음 턴을 기상에
+    쓰고 그 뒤 ROLL_OUT부터 재개한다(이미 SNORE로 확정된 인텐트를 덮어쓴다).
+    턴 종료로 깨면 그 자리에서 WakeUpMove만 실행하고 상태머신은 건드리지 않으므로,
+    SNORE 한 번을 더 한 뒤 SNORE_NEXT 분기가 재평가되어 ROLL_OUT으로 넘어간다."""
+    power_id = "slumber"
+    name = "Slumber"
+    is_debuff = False
+
+    def _decrement(self) -> bool:
+        """1 감소 후 0 이하가 되어 제거됐으면 True."""
+        if self.owner is None or self.amount <= 0:
+            return False
+        self.amount -= 1
+        if self.amount > 0:
+            return False
+        self.remove()
+        return True
+
+    def on_take_damage_powered(self, source, hp_lost: int, powered: bool = True) -> None:
+        # hp_lost > 0일 때만 호출되므로 원본 UnblockedDamage != 0 게이트와 동일.
+        owner = self.owner
+        if not self._decrement() or owner is None:
+            return
+        wake_up = getattr(owner, "wake_up_move", None)
+        stun = getattr(owner, "stun", None)
+        if wake_up is not None and stun is not None:
+            stun(wake_up, "ROLL_OUT_MOVE")
+
+    def on_turn_end(self) -> None:
+        owner = self.owner
+        if not self._decrement() or owner is None:
+            return
+        wake_up = getattr(owner, "wake_up_move", None)
+        if wake_up is not None:
+            wake_up([])
+
+
+class SoarPower(STS2Power):
+    """비행 — 보유자가 받는 파워드 공격 피해 50% 감소
+    (원본 ModifyDamageMultiplicative: DamageDecrease 50 / 100)."""
+    power_id = "soar"
+    name = "Soar"
+    is_debuff = False
+    damage_side = "incoming"
+
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        if not powered:
+            return amount
+        return int(amount * 0.5)
+
+
+class ImbalancedPower(STS2Power):
+    """불균형 — 보유자가 가한 공격이 블록에 전부 막히면 기절한다.
+
+    BowlbugRock만은 즉시 기절하는 대신 off-balance 상태가 되어 다음 무브를
+    DIZZY로 바꾼다(원본 ImbalancedPower.AfterDamageGiven 특례).
+    PowerStackType.Single이므로 재적용해도 amount가 누적되지 않는다."""
+    power_id = "imbalanced"
+    name = "Imbalanced"
+    is_debuff = True
+
+    def apply(self, owner, applier=None) -> None:
+        self.owner = owner
+        self.applier = applier
+        if self.power_id not in owner._powers:
+            owner._powers[self.power_id] = self
+
+    def on_damage_given(self, target, result) -> None:
+        owner = self.owner
+        if owner is None or not result.get("fully_blocked", False):
+            return
+        if getattr(owner, "monster_id", None) == "bowlbug_rock":
+            owner.is_off_balance = True
+            return
+        stun = getattr(owner, "stun", None)
+        if stun:
+            stun()
+
+
+class PersonalHivePower(STS2Power):
+    """개인 벌집 — 보유자(Entomancer)가 플레이어의 파워드 공격을 받을 때마다
+    공격자의 뽑을 더미 무작위 위치에 Dazed를 amount장 넣는다
+    (원본 PersonalHivePower.AfterDamageReceived).
+
+    원본에 UnblockedDamage 게이트가 없으므로 블록에 전부 막힌 공격도 카드를 준다.
+    공격자가 Osty(플레이어 펫)면 주인 플레이어의 덱으로 들어간다."""
+    power_id = "personal_hive"
+    name = "Personal Hive"
+    is_debuff = False
+
+    def on_damage_received(self, source, hp_lost: int, powered: bool = True) -> None:
+        owner = self.owner
+        if owner is None or source is None or not powered:
+            return
+        combat = getattr(owner, "combat_state", None)
+        if combat is None:
+            return
+        player = getattr(combat, "player", None)
+        # dealer.Player가 없으면(=몬스터끼리의 피해) 아무 일도 없다.
+        if source is not player and getattr(source, "owner", None) is not player:
+            return
+        combat.add_status_to_draw("dazed", self.amount)
+
+
 class SurprisePower(STS2Power):
     """기습 — 보유자가 죽으면 SneakyGremlin과 FatGremlin이 튀어나오고,
     훔쳐둔 골드가 FatGremlin의 HeistPower로 옮겨간다 (원본 SurprisePower.AfterDeath).
@@ -3412,6 +3548,14 @@ POWER_REGISTRY = {
     "surprise": SurprisePower,
     # Phase 6t — 배치15 (Ovicopter/ToughEgg)
     "hatch": HatchPower,
+    # Phase 6u — 배치16 (Tunneler/SlumberingBeetle/OwlMagistrate)
+    "burrowed": BurrowedPower,
+    "slumber": SlumberPower,
+    "soar": SoarPower,
+    # Phase 6v — 배치17 (Entomancer)
+    "personal_hive": PersonalHivePower,
+    # S1.M3.B18 — 배치18 (BowlbugRock)
+    "imbalanced": ImbalancedPower,
 }
 
 

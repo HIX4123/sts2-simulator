@@ -46,6 +46,11 @@ from sts2_sim.entities.monsters_batch12 import GremlinMerc, PhrogParasite, TwoTa
 from sts2_sim.entities.monsters_batch13 import CubexConstruct, SoulNexus
 from sts2_sim.entities.monsters_batch14 import Fogmog, TheObscura
 from sts2_sim.entities.monsters_batch15 import ToughEgg, Ovicopter
+from sts2_sim.entities.monsters_batch16 import Tunneler, SlumberingBeetle, OwlMagistrate
+from sts2_sim.entities.monsters_batch17 import Entomancer, KinFollower, TorchHeadAmalgam
+from sts2_sim.entities.monsters_batch18 import (
+    BowlbugEgg, BowlbugNectar, BowlbugRock, BowlbugSilk,
+)
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -122,6 +127,27 @@ def _slotted(monster: MonsterModel, slot_name: str) -> MonsterModel:
     """슬롯 이름을 부여해 그대로 반환 (lambda 인카운터에서 쓰기 위한 헬퍼)."""
     monster.slot_name = slot_name
     return monster
+
+
+def _bowlbugs_weak(rng: random.Random) -> List[MonsterModel]:
+    """BowlbugsWeak: BowlbugRock("odd") + Egg 또는 Nectar 중 하나("even")
+    (원본 BowlbugsWeak.cs — Rng.NextItem(Bugs))."""
+    worker = rng.choice([BowlbugEgg, BowlbugNectar])
+    return [
+        _slotted(BowlbugRock(), "odd"),
+        _slotted(worker(), "even"),
+    ]
+
+
+def _bowlbugs_normal(rng: random.Random) -> List[MonsterModel]:
+    """BowlbugsNormal: Rock 고정 first + Egg/Silk/Nectar 중 서로 다른 2종
+    (원본 BowlbugsNormal.cs — Shuffle 3종 후 앞 2개를 middle/last에 배치)."""
+    workers = rng.sample([BowlbugEgg, BowlbugSilk, BowlbugNectar], 2)
+    return [
+        _slotted(BowlbugRock(), "first"),
+        _slotted(workers[0](), "middle"),
+        _slotted(workers[1](), "last"),
+    ]
 
 
 def _exoskeletons(rng: random.Random, count: int) -> List[MonsterModel]:
@@ -249,6 +275,28 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── Phase 6t 배치15 (알 낳기/부화) ──
     # 시작은 Ovicopter 1마리. 알 슬롯(egg1~5)은 LAY_EGGS_MOVE가 뒤에서부터 채운다.
     "ovicopter_normal": lambda rng: [_slotted(Ovicopter(), "ovicopter")],
+    # ── Phase 6u 배치16 ──
+    # TunnelerNormal: Chomper(ScreamFirst=true) + Tunneler — 원본 구성 그대로.
+    "tunneler_normal": lambda rng: [Chomper(scream_first=True), Tunneler()],
+    "tunneler_weak": lambda rng: [Tunneler()],
+    # SlumberingBeetleNormal: 원본 구성 그대로 — Rock + Silk + 딱정벌레.
+    "slumbering_beetle_normal": lambda rng: [
+        _slotted(BowlbugRock(), "first"),
+        _slotted(BowlbugSilk(), "second"),
+        _slotted(SlumberingBeetle(), "third"),
+    ],
+    "owl_magistrate_normal": lambda rng: [OwlMagistrate()],
+    # ── Phase 6v 배치17 ──
+    "entomancer_elite": lambda rng: [Entomancer()],
+    # TheKinBoss는 KinFollower("slot1", StartsWithDance) + KinFollower("slot2")
+    # + KinPriest("leaderSlot") 3마리다. 리더 미이식이라 추종자 둘만 배치한다.
+    "kin_followers_weak": lambda rng: [_slotted(KinFollower(starts_with_dance=True), "slot1"),
+                                       _slotted(KinFollower(), "slot2")],
+    # QueenBoss는 TorchHeadAmalgam("amalgam") + Queen("queen"). Queen 미이식.
+    "torch_head_amalgam_normal": lambda rng: [_slotted(TorchHeadAmalgam(), "amalgam")],
+    # ── S1.M3.B18 배치18 ──
+    "bowlbugs_weak": _bowlbugs_weak,
+    "bowlbugs_normal": _bowlbugs_normal,
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류

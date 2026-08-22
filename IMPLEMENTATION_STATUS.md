@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 79종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
-| 인카운터 | 59종 | 실제 구성 로직 (부분 구성 2종은 주석 표기) |
+| 몬스터 | 89종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
+| 인카운터 | 68종 | 실제 구성 로직 (미이식/자체 구성 4종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 175종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 파워 | 180종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 24개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 27개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 79종
+## 👹 몬스터 89종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -104,6 +104,29 @@ NIBBLE 4딜 무한 반복), Ovicopter(LAY_EGGS로 빈 알 슬롯을 **뒤에서�
 3칸 ToughEgg+Minion 소환 → SMASH16 → TENDERIZER 7딜+취약2 → SUMMON_BRANCH
 {살아있는 적 ≤3 ? LAY_EGGS : NUTRITIONAL_PASTE 힘+3 → SMASH})
 
+**Phase 6u 배치16 (monsters_batch16.py):** Tunneler(HP 87, BITE 13 → BURROW
+BurrowedPower+블록 32 → BELOW 23 반복; 블록 전소진 시 on_block_broken → stun
+DIZZY 1턴 → BITE 재개), SlumberingBeetle(HP 86, 개전 Plating 15 + Slumber 3;
+SNORE 반복 → Slumber 0이 되면 기상: 턴 종료 경로는 즉시 WakeUpMove 실행 후
+Plating 상실, 피해 경로는 Stun(WakeUpMove, ROLL_OUT_MOVE) 삽입으로 다음 턴에
+기상하며 Plating은 기상 턴 전까지 유지 → ROLL_OUT 16딜+힘+2 누적), OwlMagistrate(HP
+231, 4무브 순환: SCRUTINY 16 → PECK_ASSAULT 4×6 → JUDICIAL_FLIGHT SoarPower →
+VERDICT 33딜+취약 4, Soar 제거)
+
+**`S1.M3.B17` (legacy Phase 6v, monsters_batch17.py):** Entomancer(엘리트, HP 145, 개전
+PersonalHivePower1; **시작 무브는 BEES** 3딜×7 → SPEAR 18 → PHEROMONE_SPIT
+{벌집 <3 ? 벌집+1&힘+1 : 힘+2} 순환), KinFollower(HP 58~59, 개전 Minion1,
+QUICK_SLASH 5 → BOOMERANG 2×2 → POWER_DANCE 힘+2 순환; starts_with_dance면
+POWER_DANCE부터 시작해 두 마리의 무브가 어긋난다), TorchHeadAmalgam(HP 199,
+개전 Minion1, TACKLE 18 ×2는 개전 1회뿐 → BEAM 8×3 → 약태클 14 ×2 → BEAM
+3턴 무한 루프)
+
+**`S1.M3.B18` (monsters_batch18.py):** BowlbugEgg(HP 21~22, 7딜+블록7 반복),
+BowlbugNectar(HP 35~38, 3딜 → 힘+15 → 공격 반복), BowlbugRock(HP 45~48,
+개전 Imbalanced1, 15딜이 완전 블록되면 off-balance → DIZZY), BowlbugSilk
+(HP 40~43, 약화1로 시작해 4딜×2와 교대). `bowlbugs_weak`/`bowlbugs_normal`
+추가, `slumbering_beetle_normal`을 Rock+Silk+SlumberingBeetle 원본 구성으로 복원.
+
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
 FrogKnight HP 절반), ConditionalBranchState(슬롯·상태 조건 순차 평가 —
@@ -118,7 +141,17 @@ PunchConstruct/PhantasmalGardener/Exoskeleton), 다단히트 파워 소급반영
 Phase 6m), 피해 상한 Cap 단계(Intangible/HardToKill), HP 손실 상한
 (HardenedShell/Slippery), 최대 HP 감소(PaperCuts — Phase 6n),
 피해 무효 스택(IllusionPower — Phase 6s), 역순 빈 슬롯 소환
-(CombatState.last_free_slot — 원본 LastOrDefault 대응, Phase 6t).
+(CombatState.last_free_slot — 원본 LastOrDefault 대응, Phase 6t), **블록 유지
+파워(BurrowedPower: ShouldClearBlock=false로 턴 시작 블록 초기화 방지 + on_block_broken
+후킹으로 전소진 시 stun, 제거 시 잔여 블록 0) + 기상 경로 이중화(SlumberPower: 피해
+기상=Stun으로 다음 턴 행동, 턴 종료 기상=즉시 WakeUpMove; Plating은 기상 시점까지
+유지, Phase 6u)**, **피격 반응 훅 AfterDamageReceived(Creature.on_damage_received —
+원본에 UnblockedDamage 게이트가 없어 블록에 전부 막힌 피해에도 발동하고 대상이
+그 피해로 죽은 경우에만 건너뛴다; PersonalHivePower가 파워드 피격마다 뽑을 더미
+무작위 위치에 Dazed를 amount장 삽입, Phase 6v)**, **공격자 결과 훅
+on_damage_given(`fully_blocked`는 실제 블록 흡수량 기준이라 Buffer의 HP 손실 0과
+구분; ImbalancedPower가 완전 블록 시 일반 몬스터는 다음 턴 기절, BowlbugRock은
+DIZZY로 전환) + 무브 callback 중 강제 상태 전환 보존(S1.M3.B18)**.
 
 ## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
 
@@ -728,12 +761,13 @@ Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 **Phase 6u+** 참조 — 몬스터 잔여 26종. ROADMAP에 몬스터별
-필요 파워 표(디컴파일 스캔 결과)를 실어 두었으니 재조사 없이 그대로 쓸 것.
+ROADMAP.md의 **`S1.M3.B19 — 후속 구현 배치 19`** 참조 — 몬스터
+잔여 16종. ROADMAP에 몬스터별 필요 파워 표(디컴파일 스캔 결과)를 실어
+두었으니 재조사 없이 그대로 쓸 것.
 그 밖에 렐릭 297종 풀, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension.
 
 **원본 대비 이식률** (디컴파일 `Models.*`의 `: XxxModel` 파생 클래스 기준):
-전투 코어(카드·파워·몬스터·인카운터·오브) **812/1051 ≈ 77%**,
+전투 코어(카드·파워·몬스터·인카운터·오브) **845/1051 ≈ 80%**,
 런 콘텐츠(렐릭·포션·이벤트) **22/420 ≈ 5%**. 클래스 수로 드러나지 않는
 공백으로 `core/run.py`의 축소된 런 루프(고정 층 시퀀스, 맵 그래프·상점·
 이벤트 방 없음)가 있다.

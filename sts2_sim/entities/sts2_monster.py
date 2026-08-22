@@ -166,11 +166,13 @@ class MonsterMoveStateMachine:
     def get_current_move_name(self) -> str:
         return self.current_state.name
 
-    def execute_move(self, targets: List[Creature]) -> None:
-        if self.current_state.execute:
-            self.current_state.execute(targets)
-        self._last_move_name = self.current_state.name
-        self.history.append(self.current_state.name)
+    def execute_move(self, targets: List[Creature]) -> MonsterState:
+        executed_state = self.current_state
+        self._last_move_name = executed_state.name
+        self.history.append(executed_state.name)
+        if executed_state.execute:
+            executed_state.execute(targets)
+        return executed_state
 
     def advance_state(self) -> None:
         nxt = self.current_state.follow_up_state
@@ -275,12 +277,14 @@ class MonsterModel(Creature):
         무브 안에서 앞선 히트로 얻은 파워가 뒤 히트에 소급 반영되지 않게 한다
         (원본 AfterAttack이 공격 커맨드 전체 종료 후 1회만 발동하는 것과 대응)."""
         if self._move_state_machine:
-            self._move_state_machine.execute_move(targets)
+            executed_state = self._move_state_machine.execute_move(targets)
             for p in list(self._powers.values()):
                 flush = getattr(p, "flush_landed_attacks", None)
                 if flush:
                     flush()
-            self._move_state_machine.advance_state()
+            # 무브 실행 중 Stun/강제 전환이 발생하면 그 상태를 다음 턴까지 보존한다.
+            if self._move_state_machine.current_state is executed_state:
+                self._move_state_machine.advance_state()
 
     def attack(self, target: Creature, base_damage: int) -> None:
         """공격 파이프라인 (자신의 Strength/Weak 반영).
@@ -289,6 +293,10 @@ class MonsterModel(Creature):
         공격 적중 트리거, ScrollOfBiting PaperCutsPower의 대상 한정 최대 HP 감소).
         원본 AfterDamageGiven이 target을 넘겨받으므로 훅에도 피격 대상을 전달한다."""
         result = target.take_damage(self.compute_attack_damage(base_damage), source=self)
+        for p in list(self._powers.values()):
+            hook = getattr(p, "on_damage_given", None)
+            if hook:
+                hook(target, result)
         if result.get("hp_lost", 0) > 0:
             for p in list(self._powers.values()):
                 hook = getattr(p, "on_landed_attack", None)
