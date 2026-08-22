@@ -15,6 +15,11 @@ from sts2_sim.entities import (  # noqa: F401
     monsters_batch12,
     monsters_batch13,
     monsters_batch14,
+    monsters_batch15,
+    monsters_batch16,
+    monsters_batch17,
+    monsters_batch18,
+    monsters_batch19,
     monsters_extra,
     sts2_monster,
 )

@@ -3360,6 +3360,93 @@ class SurprisePower(STS2Power):
 
 
 # ══════════════════════════════════════════
+# S1.M3.B19 — KaiserCrabBoss (Crusher/Rocket) 전용 파워
+# ══════════════════════════════════════════
+
+class BackAttackLeftPower(STS2Power):
+    """왼팔 표식 — SurroundedPower가 등 뒤 공격자를 판정할 때만 조회한다."""
+    power_id = "back_attack_left"
+    name = "Back Attack Left"
+    is_debuff = False
+
+
+class BackAttackRightPower(STS2Power):
+    """오른팔 표식 — SurroundedPower가 등 뒤 공격자를 판정할 때만 조회한다."""
+    power_id = "back_attack_right"
+    name = "Back Attack Right"
+    is_debuff = False
+
+
+class CrabRagePower(STS2Power):
+    """같은 편 동료 사망 시 힘 +6, 언파워드 블록 99를 얻고 제거된다."""
+    power_id = "crab_rage"
+    name = "Crab Rage"
+    is_debuff = False
+    rage_strength = 6
+    rage_block = 99
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None or owner.is_dead or dead is owner:
+            return
+        combat = getattr(owner, "combat_state", None)
+        if combat is None or dead not in getattr(combat, "monsters", []):
+            return
+        owner.apply_power(Strength(self.rage_strength))
+        owner.gain_block(self.rage_block, powered=False)
+        self.remove()
+
+
+class SurroundedPower(STS2Power):
+    """등 뒤 공격자의 피해를 1.5배로 받는 방향 상태.
+
+    기본 방향은 Right라 BackAttackLeftPower를 가진 Crusher가 등 뒤에 있다.
+    target은 존재하지만 현재 before-card hook에 전달되지 않아 카드 대상 기반 방향
+    전환과 미구현 포션 방향 전환은 이번 배치에서 재현하지 않는다. 적 사망 후 한쪽
+    표식만 남으면 그 적을 바라보도록 방향을 갱신한다.
+    """
+    power_id = "surrounded"
+    name = "Surrounded"
+    is_debuff = True
+    damage_side = "incoming"
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.facing = "right"
+
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        if source is None or not hasattr(source, "has_power"):
+            return amount
+        marker = ("back_attack_left" if self.facing == "right"
+                  else "back_attack_right")
+        if source.has_power(marker):
+            return int(amount * 1.5)
+        return amount
+
+    def _update_direction(self, target) -> None:
+        if target is None or not hasattr(target, "has_power"):
+            return
+        if self.facing == "right" and target.has_power("back_attack_left"):
+            self.facing = "left"
+        elif self.facing == "left" and target.has_power("back_attack_right"):
+            self.facing = "right"
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None:
+            return
+        combat = getattr(owner, "combat", None)
+        if combat is None or dead not in getattr(combat, "monsters", []):
+            return
+        alive = [monster for monster in combat.monsters if not monster.is_gone]
+        if not alive:
+            return
+        if (all(monster.has_power("back_attack_left") for monster in alive)
+                or all(monster.has_power("back_attack_right") for monster in alive)):
+            self._update_direction(alive[0])
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -3556,6 +3643,11 @@ POWER_REGISTRY = {
     "personal_hive": PersonalHivePower,
     # S1.M3.B18 — 배치18 (BowlbugRock)
     "imbalanced": ImbalancedPower,
+    # S1.M3.B19 — 배치19 (Kaiser Crab Boss)
+    "back_attack_left": BackAttackLeftPower,
+    "back_attack_right": BackAttackRightPower,
+    "crab_rage": CrabRagePower,
+    "surrounded": SurroundedPower,
 }
 
 

@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 89종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom 포함) |
-| 인카운터 | 68종 | 실제 구성 로직 (미이식/자체 구성 4종은 주석 표기) |
+| 몬스터 | 91종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom/Kaiser Crab 포함) |
+| 인카운터 | 69종 | 실제 구성 로직 (미이식/자체 구성 4종은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 180종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 파워 | 184종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크/사망 훅 배선 완료 |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 27개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 28개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -25,9 +25,10 @@ sts2_sim/
 │  ├─ player.py          # 전투 플레이어 (에너지/Stars/Osty/오브/렐릭/덱)
 │  ├─ sts2_character.py  # 캐릭터 정의 (실제 시작 덱/렐릭/HP)
 │  ├─ sts2_monster.py    # MonsterModel + 상태 머신 + 기본 17종
-│  └─ monsters_extra.py  # Phase 6a 추가 17종
+│  ├─ monsters_extra.py  # Phase 6a 추가 17종
+│  └─ monsters_batch*.py # 후속 배치 몬스터 57종
 ├─ models/
-│  ├─ sts2_power.py      # 파워 120종
+│  ├─ sts2_power.py      # 파워 184종
 │  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종 + 상태이상 5종
 │  ├─ sts2_relic.py      # 렐릭 22종
 │  └─ sts2_orb.py        # 오브 5종 + OrbQueue (상한 10/EvokeLast/이보크 훅)
@@ -58,7 +59,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 89종
+## 👹 몬스터 91종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -127,6 +128,12 @@ BowlbugNectar(HP 35~38, 3딜 → 힘+15 → 공격 반복), BowlbugRock(HP 45~48
 (HP 40~43, 약화1로 시작해 4딜×2와 교대). `bowlbugs_weak`/`bowlbugs_normal`
 추가, `slumbering_beetle_normal`을 Rock+Silk+SlumberingBeetle 원본 구성으로 복원.
 
+**`S1.M3.B19` (monsters_batch19.py):** Kaiser Crab 보스의 Crusher(HP 209)와
+Rocket(HP 199). 각자 고정 5무브 순환, BackAttack 좌/우 표식과 CrabRage를 가지며
+Rocket이 플레이어에게 Surrounded를 부여한다. 동료가 죽으면 생존한 팔은 힘 +6과
+언파워드 블록 99를 얻고, 플레이어는 남은 팔을 바라보도록 방향을 갱신한다. 양쪽 모두
+Doom 즉사 면역. `kaiser_crab_boss` 원본 2슬롯 인카운터 추가.
+
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
 FrogKnight HP 절반), ConditionalBranchState(슬롯·상태 조건 순차 평가 —
@@ -151,7 +158,10 @@ Phase 6m), 피해 상한 Cap 단계(Intangible/HardToKill), HP 손실 상한
 무작위 위치에 Dazed를 amount장 삽입, Phase 6v)**, **공격자 결과 훅
 on_damage_given(`fully_blocked`는 실제 블록 흡수량 기준이라 Buffer의 HP 손실 0과
 구분; ImbalancedPower가 완전 블록 시 일반 몬스터는 다음 턴 기절, BowlbugRock은
-DIZZY로 전환) + 무브 callback 중 강제 상태 전환 보존(S1.M3.B18)**.
+DIZZY로 전환) + 무브 callback 중 강제 상태 전환 보존(S1.M3.B18)**,
+**후방 공격 방향 상태(Surrounded: 기본 Right, 해당 BackAttack 표식 공격자의
+powered/unpowered 피해 모두 1.5배) + 사망 브로드캐스트 기반 CrabRage(힘 +6,
+언파워드 블록 99, 1회 발동 후 제거) + 팔 사망 후 방향 갱신(S1.M3.B19)**.
 
 ## 📈 실측 통계 (그리디 정책, 신선한 덱 20시드)
 
@@ -761,13 +771,13 @@ Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조�
 
 ## 🚀 다음 단계
 
-ROADMAP.md의 **`S1.M3.B19 — 후속 구현 배치 19`** 참조 — 몬스터
-잔여 16종. ROADMAP에 몬스터별 필요 파워 표(디컴파일 스캔 결과)를 실어
+ROADMAP.md의 **`S1.M3.B20 — 후속 구현 배치 20`** 참조 — 몬스터
+잔여 14종. ROADMAP에 몬스터별 필요 파워 표(디컴파일 스캔 결과)를 실어
 두었으니 재조사 없이 그대로 쓸 것.
 그 밖에 렐릭 297종 풀, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension.
 
 **원본 대비 이식률** (디컴파일 `Models.*`의 `: XxxModel` 파생 클래스 기준):
-전투 코어(카드·파워·몬스터·인카운터·오브) **845/1051 ≈ 80%**,
+전투 코어(카드·파워·몬스터·인카운터·오브) **852/1051 ≈ 81%**,
 런 콘텐츠(렐릭·포션·이벤트) **22/420 ≈ 5%**. 클래스 수로 드러나지 않는
 공백으로 `core/run.py`의 축소된 런 루프(고정 층 시퀀스, 맵 그래프·상점·
 이벤트 방 없음)가 있다.

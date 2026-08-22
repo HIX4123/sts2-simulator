@@ -4,9 +4,9 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: `S1.M3.B18 — 몬스터·인카운터 배치 18` 완료** — 카드 503종 /
-파워 180종 / 몬스터 89종 / 인카운터 68종 / 렐릭 22종 / 오브 5종,
-루트 회귀 27스위트 전체 통과.
+**현재 위치: `S1.M3.B19 — Kaiser Crab 보스` 완료** — 카드 503종 /
+파워 184종 / 몬스터 91종 / 인카운터 69종 / 렐릭 22종 / 오브 5종,
+루트 회귀 28스위트 전체 통과.
 
 ## 작업 단위와 ID 규약
 
@@ -52,21 +52,21 @@ Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
 | 영역 | 이식 / 원본 | 비율 |
 |---|---|---|
 | 카드 | 503 / 593 | 85% |
-| 파워 | 180 / 248 | 73% |
-| 몬스터 | 89 / 117 | 76% |
-| 인카운터 | 68 / 88 | 77% |
+| 파워 | 184 / 248 | 74% |
+| 몬스터 | 91 / 117 | 78% |
+| 인카운터 | 69 / 88 | 78% |
 | 오브 | 5 / 5 | 100% |
-| **전투 코어 소계** | **845 / 1051** | **80%** |
+| **전투 코어 소계** | **852 / 1051** | **81%** |
 | 렐릭 | 22 / 297 | 7% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
 | **런 콘텐츠 소계** | **22 / 420** | **5%** |
 
-전투 자체는 약 80%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
+전투 자체는 약 81%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
 없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
 
-다음은 [`S1.M3.B19 — 후속 구현 배치 19`](#-s1m3b19--후속-구현-배치-19-계획).
+다음은 `S1.M3.B20`에서 아래 잔여 대상 중 선행 의존성이 작은 묶음을 선정한다.
 
 ---
 
@@ -635,12 +635,29 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
   SlumberingBeetle 원본 3체 구성으로 복원
 - [x] `test_sts2_s1_m3_b18.py` 및 루트 회귀 27스위트 전체 통과
 
-## 📋 `S1.M3.B19 — 후속 구현 배치 19` (계획)
+## ✅ `S1.M3.B19 — Kaiser Crab 보스` (완료)
+
+- [x] **Crusher**(HP 209) — 개전 `BackAttackLeftPower` + `CrabRagePower`,
+  `THRASH` 12 → `ENLARGING_STRIKE` 4 → `BUG_STING` 6×2+약화/허약 2 →
+  `ADAPT` 힘 +2 → `GUARDED_STRIKE` 12+블록 18의 고정 5무브 순환
+- [x] **Rocket**(HP 199) — 개전 플레이어에게 `SurroundedPower`, 자신에게
+  `BackAttackRightPower` + `CrabRagePower`, `TARGETING_RETICLE` 3 →
+  `PRECISION_BEAM` 18 → `CHARGE_UP` 힘 +2 → `LASER` 31 → `RECHARGE` 무행동 순환
+- [x] **Surrounded 방향·후방 공격** — 기본 `Facing.Right`에서 Crusher의 모든
+  피해(powered/unpowered 모두)를 1.5배로 받고, 한 팔이 죽으면 살아남은 팔을
+  바라보도록 방향 갱신
+- [x] **Crab Rage** — 동료 사망 시 생존한 팔이 힘 +6과 언파워드 블록 99를 얻고
+  파워 제거. Crusher/Rocket의 `ShouldDisappearFromDoom=false`도 이식
+- [x] **`kaiser_crab_boss` 인카운터** — 원본 `crusher`/`rocket` 슬롯 구성 및
+  일반 `import sts2_sim` 경로의 배치 15~19 registry 누락 수정
+- [x] `test_sts2_s1_m3_b19.py` 및 루트 회귀 28스위트 전체 통과
+
+## 📋 `S1.M3.B20 — 후속 구현 배치 20` (계획)
 
 아래 잔여 대상 중 선행 의존성이 작은 묶음을 원본 대조 후 선정한다. Affliction,
 Curse 선택, 다체 보스처럼 별도 엔진이 필요한 대상은 한 Batch에 억지로 섞지 않는다.
 
-### 몬스터 잔여 16종 — 차단 요인별 분류
+### 몬스터 잔여 14종 — 차단 요인별 분류
 
 인카운터가 실제로 배치하는 대상 기준(개발용 클래스, 렐릭 전용 소환 펫
 Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 파워"는
@@ -650,7 +667,6 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 |---|---|---|---|
 | InfestedPrism | 161 | `VitalSparkPower` | Affliction/Tainted 시스템 필요 |
 | CeremonialBeast | 252 | `PlowPower`, `RingingPower` | |
-| Crusher | 209 | `BackAttackLeftPower`, `CrabRagePower` | Rocket과 함께 등장 |
 | ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | |
 | KnowledgeDemon | 379 | 없음 | Curse 선택 카드/즉시 선택 효과 필요 |
 | LivingFog + GasBomb | 80 / 7 | `SmoggyPower` | **Affliction 시스템**(카드 단위 상태이상) 필요 |
@@ -705,6 +721,7 @@ python3 test_sts2_phase6t.py      # 배치15 (ToughEgg/Ovicopter)
 python3 test_sts2_phase6u.py      # 배치16 (Tunneler/SlumberingBeetle/OwlMagistrate)
 python3 test_sts2_phase6v.py      # 배치17 (Entomancer/KinFollower/TorchHeadAmalgam)
 python3 test_sts2_s1_m3_b18.py    # 배치18 (Bowlbug 4종/Imbalanced/인카운터)
+python3 test_sts2_s1_m3_b19.py    # 배치19 (Kaiser Crab 보스/Surrounded/Crab Rage)
 ```
 
 **통계 실행:**

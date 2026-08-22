@@ -51,6 +51,7 @@ from sts2_sim.entities.monsters_batch17 import Entomancer, KinFollower, TorchHea
 from sts2_sim.entities.monsters_batch18 import (
     BowlbugEgg, BowlbugNectar, BowlbugRock, BowlbugSilk,
 )
+from sts2_sim.entities.monsters_batch19 import Crusher, Rocket
 
 
 def _slimes_weak(rng: random.Random) -> List[MonsterModel]:
@@ -297,6 +298,11 @@ ENCOUNTERS: Dict[str, Callable[[random.Random], List[MonsterModel]]] = {
     # ── S1.M3.B18 배치18 ──
     "bowlbugs_weak": _bowlbugs_weak,
     "bowlbugs_normal": _bowlbugs_normal,
+    # ── S1.M3.B19 배치19 ──
+    "kaiser_crab_boss": lambda rng: [
+        _slotted(Crusher(), "crusher"),
+        _slotted(Rocket(), "rocket"),
+    ],
 }
 
 # 난이도 단계별 풀 (런 진행용) — 신선한 스타터 덱 그리디 승률 실측 기준 분류
@@ -321,6 +327,7 @@ ENCOUNTER_SLOTS: Dict[str, List[str]] = {
     "exoskeletons_normal": ["first", "second", "third", "fourth"],
     "exoskeletons_weak": ["first", "second", "third"],
     "ovicopter_normal": ["egg1", "egg2", "egg3", "egg4", "egg5", "ovicopter"],
+    "kaiser_crab_boss": ["crusher", "rocket"],
 }
 
 
