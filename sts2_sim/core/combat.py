@@ -154,6 +154,7 @@ class CombatState:
                 shiv.retains = True
             self.hand.append(shiv)
             made.append(shiv)
+            self.notify_player_powers("on_card_entered_combat", shiv, self)
         return made
 
     def notify_player_powers(self, hook: str, *hook_args) -> None:
@@ -243,6 +244,7 @@ class CombatState:
                         hook = getattr(c, "on_card_generated_combat", None)
                         if hook:
                             hook(card, self)
+            self.notify_player_powers("on_card_entered_combat", card, self)
         return made
 
     def auto_play_from_draw_pile(self, count: int) -> None:
@@ -320,6 +322,12 @@ class CombatState:
             return False
         if card.card_type == CardType.ATTACK and self.player.get_power_amount("tangled") > 0:
             return False
+        if card.ringing and self.cards_played_this_turn > 0:
+            return False
+        for power in self.player._powers.values():
+            should_play = getattr(power, "should_play", None)
+            if should_play and not should_play(card, self):
+                return False
         return True
 
     # ──────────────────────────────────────────
@@ -359,7 +367,12 @@ class CombatState:
             self.end_turn_requested = False
             for monster in self.monsters:
                 monster._hits_taken_this_turn = 0  # BeatIntoShape 턴 집계
-            self.player.energy = self.player.max_energy
+            max_energy = self.player.max_energy
+            for power in list(self.player._powers.values()):
+                modify = getattr(power, "modify_max_energy", None)
+                if modify:
+                    max_energy = modify(max_energy)
+            self.player.energy = max(0, max_energy)
             self._log(f"--- Turn {self.turn} --- Player HP {self.player.current_hp}/"
                       f"{self.player.max_hp} Block {self.player.block} "
                       f"Energy {self.player.energy}")
@@ -809,7 +822,15 @@ class CombatState:
         card는 이미 어느 파일에서든 제거된 상태이거나 핸드에 있을 수 있다."""
         if card in self.hand:
             self.hand.remove(card)
-        if not card.playable:
+        can_auto_play = card.playable and not (
+            card.ringing and self.cards_played_this_turn > 0)
+        if can_auto_play:
+            for power in self.player._powers.values():
+                should_play = getattr(power, "should_play", None)
+                if should_play and not should_play(card, self):
+                    can_auto_play = False
+                    break
+        if not can_auto_play:
             self.discard_pile.append(card)
             return
         target = min(self.alive_enemies, key=lambda m: m.current_hp) \
@@ -902,6 +923,7 @@ class CombatState:
                 card._cost_this_combat = None
                 card._cost_add_this_combat = 0
                 card._extra_plays = 0
+                card.ringing = False
                 reset = getattr(card, "reset_combat_state", None)  # Claw 누적 데미지
                 if reset:
                     reset()

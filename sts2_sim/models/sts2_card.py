@@ -140,6 +140,7 @@ class STS2Card:
         self._free_until_played = False  # SetUntilPlayed(0) (RocketPunch)
         self._last_paid = 0             # 직전 플레이에 지불한 에너지 (Feral 판정)
         self._extra_plays = 0           # Transfigure — 플레이 시 추가 발동 횟수(BaseReplayCount)
+        self.ringing = False            # Ringing Affliction — 턴당 첫 카드 이후 플레이 차단
 
     def use(self, source, targets: List["Creature"], combat=None) -> None:
         """카드 사용. combat은 전투 컨텍스트 (드로우/오브 등 필요 시)."""
@@ -571,6 +572,62 @@ class Void(STS2Card):
         combat.player.energy = max(0, combat.player.energy - 1)
 
 
+class Disintegration(STS2Card):
+    """Knowledge Demon 선택 전용 Status — 선택 즉시 매 턴 종료 피해를 부여한다."""
+    card_id = "disintegration"
+    name = "Disintegration"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = -1
+    playable = False
+
+    def on_chosen(self, owner, amount: int = 6) -> None:
+        from sts2_sim.models.sts2_power import DisintegrationPower
+        owner.apply_power(DisintegrationPower(amount), applier=owner)
+
+
+class MindRot(STS2Card):
+    """Knowledge Demon 선택 전용 Status — 선택 즉시 드로우 감소를 부여한다."""
+    card_id = "mind_rot"
+    name = "Mind Rot"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = -1
+    playable = False
+
+    def on_chosen(self, owner) -> None:
+        from sts2_sim.models.sts2_power import MindRotPower
+        owner.apply_power(MindRotPower(1), applier=owner)
+
+
+class Sloth(STS2Card):
+    """Knowledge Demon 선택 전용 Status — 선택 즉시 카드 플레이 제한을 부여한다."""
+    card_id = "sloth"
+    name = "Sloth"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = -1
+    playable = False
+
+    def on_chosen(self, owner) -> None:
+        from sts2_sim.models.sts2_power import SlothPower
+        owner.apply_power(SlothPower(3), applier=owner)
+
+
+class WasteAway(STS2Card):
+    """Knowledge Demon 선택 전용 Status — 선택 즉시 최대 에너지 감소를 부여한다."""
+    card_id = "waste_away"
+    name = "Waste Away"
+    card_type = CardType.STATUS
+    rarity = Rarity.TOKEN
+    cost = -1
+    playable = False
+
+    def on_chosen(self, owner) -> None:
+        from sts2_sim.models.sts2_power import WasteAwayPower
+        owner.apply_power(WasteAwayPower(1), applier=owner)
+
+
 # ══════════════════════════════════════════
 # 카드 팩토리
 # ══════════════════════════════════════════
@@ -605,6 +662,11 @@ CARD_REGISTRY = {
     "infection": Infection,
     "toxic": Toxic,
     "beckon": Beckon,
+    # S1.M3.B21 — Knowledge Demon 선택 전용 Status
+    "disintegration": Disintegration,
+    "mind_rot": MindRot,
+    "sloth": Sloth,
+    "waste_away": WasteAway,
 }
 
 

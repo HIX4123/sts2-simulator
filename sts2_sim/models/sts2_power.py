@@ -2224,6 +2224,16 @@ class TyrannyP(STS2Power):
         combat.exhaust_from_hand(self.amount)
 
 
+class WasteAwayPower(STS2Power):
+    """Waste Away — 기본 최대 에너지는 보존하고 턴별 계산값만 감소시킨다."""
+    power_id = "waste_away"
+    name = "Waste Away"
+    is_debuff = True
+
+    def modify_max_energy(self, amount: int) -> int:
+        return amount - self.amount
+
+
 class SealedThroneP(STS2Power):
     """봉인된 왕좌 — 카드를 플레이할 때마다(효과 처리 전) 별 +amount
     (원본 TheSealedThronePower — BeforeCardPlayed. 자기 플레이는 파워 적용
@@ -3360,6 +3370,212 @@ class SurprisePower(STS2Power):
 
 
 # ══════════════════════════════════════════
+# S1.M3.B19 — KaiserCrabBoss (Crusher/Rocket) 전용 파워
+# ══════════════════════════════════════════
+
+class BackAttackLeftPower(STS2Power):
+    """왼팔 표식 — 원본 BackAttackLeftPower는 동작이 전혀 없는 순수 마커로,
+    SurroundedPower가 "지금 등을 보이고 있는 쪽"을 판정할 때만 조회한다.
+    Crusher가 전투 시작 시 스스로에게 적용."""
+    power_id = "back_attack_left"
+    name = "Back Attack Left"
+    is_debuff = False
+
+
+class BackAttackRightPower(STS2Power):
+    """오른팔 표식 — BackAttackLeftPower와 동일한 순수 마커.
+    Rocket이 전투 시작 시 스스로에게 적용."""
+    power_id = "back_attack_right"
+    name = "Back Attack Right"
+    is_debuff = False
+
+
+class CrabRagePower(STS2Power):
+    """게의 분노 — 같은 편(몬스터) 동료가 죽으면 힘 +6과 블록 99를 얻고 자신은
+    제거된다 (원본 CrabRagePower.AfterDeath — target != Owner && 같은 편).
+    블록 99는 원본이 ValueProp.Unpowered로 지급하므로 민첩/허약이 적용되지 않는다.
+    Crusher/Rocket이 각각 전투 시작 시 스스로에게 적용 — 한쪽 팔이 먼저 죽으면
+    남은 팔이 폭주한다."""
+    power_id = "crab_rage"
+    name = "Crab Rage"
+    is_debuff = False
+    rage_strength = 6
+    rage_block = 99
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None or owner.is_dead or dead is owner:
+            return
+        combat = getattr(owner, "combat_state", None)
+        if combat is None or dead not in getattr(combat, "monsters", []):
+            return  # 원본 target.Side == Owner.Side — 몬스터측 사망만 반응
+        owner.apply_power(Strength(self.rage_strength))
+        owner.gain_block(self.rage_block, powered=False)
+        self.remove()
+
+
+class SurroundedPower(STS2Power):
+    """포위 — 플레이어가 두 팔 사이에 끼여 한쪽에 등을 보이는 상태. 지금 바라보지
+    않는 쪽(back-attack 표식을 가진 팔)의 파워드 공격을 1.5배로 받는다
+    (원본 SurroundedPower.ModifyDamageMultiplicative — dealer가 현재 Facing의
+    반대편 표식을 가질 때만 1.5).
+
+    Facing 기본값은 Right이며, 이때 BackAttackLeftPower를 가진 팔(Crusher)이
+    등 뒤에 있다. 원본은 BeforeCardPlayed/BeforePotionUsed에서 플레이어가 지정한
+    대상 쪽으로 방향을 돌리지만, 이 엔진에는 카드의 단일 대상 지정 개념이 없어
+    (notify_card_played가 대상을 전달하지 않음) 그 경로는 재현하지 않는다.
+    사망 기반 갱신(원본 AfterDeath — 반대편 팔이 죽고 남은 적이 전부 한쪽
+    표식이면 그쪽을 향한다)만 이식했다. Rocket이 전투 시작 시 플레이어에게 적용."""
+    power_id = "surrounded"
+    name = "Surrounded"
+    is_debuff = True
+    damage_side = "incoming"
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.facing = "right"  # 원본 Direction.Right 기본값
+
+    def modify_incoming(self, amount: int, source, powered: bool = True) -> int:
+        if not powered or source is None or not hasattr(source, "has_power"):
+            return amount
+        marker = ("back_attack_left" if self.facing == "right"
+                  else "back_attack_right")
+        if source.has_power(marker):
+            return int(amount * 1.5)
+        return amount
+
+    def _update_direction(self, target) -> None:
+        """원본 UpdateDirection — 바라보는 쪽 반대편 표식을 가진 대상을 향해 돈다."""
+        if target is None or not hasattr(target, "has_power"):
+            return
+        if self.facing == "right" and target.has_power("back_attack_left"):
+            self.facing = "left"
+        elif self.facing == "left" and target.has_power("back_attack_right"):
+            self.facing = "right"
+
+    def on_any_death(self, dead) -> None:
+        owner = self.owner
+        if owner is None:
+            return
+        combat = getattr(owner, "combat", None)
+        if combat is None or dead not in getattr(combat, "monsters", []):
+            return  # 원본 creature.Side != Owner.Side — 적측 사망만 반응
+        alive = [m for m in combat.monsters if not m.is_gone]
+        if not alive:
+            return
+        # 원본: 남은 적이 전부 한쪽 표식일 때만 그쪽으로 방향을 갱신한다
+        if (all(m.has_power("back_attack_left") for m in alive)
+                or all(m.has_power("back_attack_right") for m in alive)):
+            self._update_direction(alive[0])
+
+
+# ══════════════════════════════════════════
+# S1.M3.B21 — KnowledgeDemon 전용 파워
+# ══════════════════════════════════════════
+
+class DisintegrationPower(STS2Power):
+    """붕괴 — 소유자 측 턴 종료마다 amount의 Unpowered 피해를 받는다."""
+    power_id = "disintegration"
+    name = "Disintegration"
+    is_debuff = True
+
+    def on_turn_end(self) -> None:
+        if self.owner is not None and not self.owner.is_dead:
+            self.owner.take_damage(
+                self.amount, source=self.owner, powered=False)
+
+
+class MindRotPower(STS2Power):
+    """정신 부패 — 소유자의 기본 손패 드로우를 amount만큼 감소시킨다."""
+    power_id = "mind_rot"
+    name = "Mind Rot"
+    is_debuff = True
+
+    def modify_hand_draw(self, count: int) -> int:
+        return max(0, count - self.amount)
+
+
+class SlothPower(STS2Power):
+    """나태 — 소유자가 턴마다 시작할 수 있는 카드 플레이를 amount장으로 제한한다."""
+    power_id = "sloth"
+    name = "Sloth"
+    is_debuff = True
+
+    def __init__(self, amount: int = 0):
+        super().__init__(amount)
+        self.cards_played_this_turn = 0
+
+    def should_play(self, card, combat) -> bool:
+        return self.cards_played_this_turn < self.amount
+
+    def before_card_played(self, card, combat) -> None:
+        self.cards_played_this_turn += 1
+
+    def on_turn_start(self) -> None:
+        self.cards_played_this_turn = 0
+
+
+# ══════════════════════════════════════════
+# S1.M3.B20 — CeremonialBeast 전용 파워
+# ══════════════════════════════════════════
+
+class PlowPower(STS2Power):
+    """쟁기질 — 실제 피해 후 HP가 임계치 이하이면 힘을 모두 잃고 기절한다."""
+    power_id = "plow"
+    name = "Plow"
+    is_debuff = True
+
+    def on_damage_received(self, source, hp_lost: int, powered: bool = True) -> None:
+        owner = self.owner
+        if owner is None or hp_lost <= 0 or owner.current_hp > self.amount:
+            return
+        owner.remove_power("temp_strength")
+        owner.remove_power("strength")
+        set_stunned = getattr(owner, "set_stunned_by_plow", None)
+        stunned_move = getattr(owner, "_stunned_move", None)
+        if set_stunned is not None and stunned_move is not None:
+            set_stunned()
+            owner.stun(stunned_move, "BEAST_CRY_MOVE")
+        else:
+            owner.stun()
+        self.remove()
+
+
+class RingingPower(STS2Power):
+    """울림 — 첫 카드가 시작된 뒤 울림이 붙은 카드를 이번 턴 차단한다."""
+    power_id = "ringing"
+    name = "Ringing"
+    is_debuff = True
+
+    @staticmethod
+    def _cards(combat):
+        for pile in (combat.hand, combat.draw_pile,
+                     combat.discard_pile, combat.exhaust_pile):
+            yield from pile
+
+    def apply(self, owner: "Creature", applier: Optional["Creature"] = None) -> None:
+        super().apply(owner, applier)
+        combat = getattr(owner, "combat", None)
+        if combat is not None:
+            for card in self._cards(combat):
+                card.ringing = True
+
+    def on_card_entered_combat(self, card, combat) -> None:
+        card.ringing = True
+
+    def on_turn_end(self) -> None:
+        self.remove()
+
+    def remove(self) -> None:
+        owner = self.owner
+        combat = getattr(owner, "combat", None) if owner is not None else None
+        if combat is not None:
+            for card in self._cards(combat):
+                card.ringing = False
+        super().remove()
+
+
+# ══════════════════════════════════════════
 # 파워 팩토리
 # ══════════════════════════════════════════
 
@@ -3556,6 +3772,19 @@ POWER_REGISTRY = {
     "personal_hive": PersonalHivePower,
     # S1.M3.B18 — 배치18 (BowlbugRock)
     "imbalanced": ImbalancedPower,
+    # S1.M3.B19 — 배치19 (KaiserCrabBoss: Crusher/Rocket)
+    "back_attack_left": BackAttackLeftPower,
+    "back_attack_right": BackAttackRightPower,
+    "crab_rage": CrabRagePower,
+    "surrounded": SurroundedPower,
+    # S1.M3.B20 — 배치20 (CeremonialBeast)
+    "plow": PlowPower,
+    "ringing": RingingPower,
+    # S1.M3.B21 — 배치21 (KnowledgeDemon)
+    "disintegration": DisintegrationPower,
+    "mind_rot": MindRotPower,
+    "sloth": SlothPower,
+    "waste_away": WasteAwayPower,
 }
 
 

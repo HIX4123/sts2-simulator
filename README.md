@@ -11,17 +11,17 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
 | 카드 | 503종 | Ironclad 85 / Silent 86 / Defect 86 / Necrobinder 82 / Regent 82 / Colorless 65 완전 이식 + 스타터·상태이상·토큰 |
-| 파워 | 180종 | 데미지·블록·비용 수정, 카드 플레이/소모/생성 훅 배선 |
-| 몬스터 | 89종 | 상태 머신 AI. 보스 SoulFysh / LagavulinMatriarch / WaterfallGiant / Vantom 포함 |
-| 인카운터 | 68종 | 원본 `GenerateMonsters()` 구성 로직 재현 (미이식/자체 구성 4종은 코드 주석 표기) |
+| 파워 | 184종 | 데미지·블록·비용 수정, 카드 플레이/소모/생성 훅 배선 |
+| 몬스터 | 91종 | 상태 머신 AI. 보스 SoulFysh / LagavulinMatriarch / WaterfallGiant / Vantom / KaiserCrab 포함 |
+| 인카운터 | 69종 | 원본 `GenerateMonsters()` 구성 로직 재현 (미이식/자체 구성 4종은 코드 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 렐릭 | 22종 | 스타터 5종은 실제 동작 |
 | 오브 | 5종 | Lightning / Frost / Dark / Plasma / Glass + OrbQueue |
-| 테스트 | 27개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 28개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 원본(디컴파일) 대비 이식률은 전투 코어(카드·파워·몬스터·인카운터·오브)
-약 **80%**, 런 콘텐츠(렐릭·포션·이벤트) 약 **5%**입니다. 현재 작업 위치는
-**`S1.M3.B18 — 몬스터·인카운터 배치 18` 완료**이며, Stage·Milestone·Batch
+약 **81%**, 런 콘텐츠(렐릭·포션·이벤트) 약 **5%**입니다. 현재 작업 위치는
+**`S1.M3.B19 — 몬스터·인카운터 배치 19` 완료**이며, Stage·Milestone·Batch
 ID 규약과 다음 작업은 [ROADMAP.md](ROADMAP.md), 세부 구현 현황은
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)를 참고하세요.
 

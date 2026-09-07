@@ -4,9 +4,9 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: `S1.M3.B18 — 몬스터·인카운터 배치 18` 완료** — 카드 503종 /
-파워 180종 / 몬스터 89종 / 인카운터 68종 / 렐릭 22종 / 오브 5종,
-루트 회귀 27스위트 전체 통과.
+**현재 위치: `S1.M3.B22 — TheAdversary Mk1~Mk3` 완료** — 카드 507종 /
+파워 188종 / 몬스터 94종 / 인카운터 70종 / 렐릭 22종 / 오브 5종,
+루트 회귀 31스위트 전체 통과.
 
 ## 작업 단위와 ID 규약
 
@@ -52,21 +52,21 @@ Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
 | 영역 | 이식 / 원본 | 비율 |
 |---|---|---|
 | 카드 | 503 / 593 | 85% |
-| 파워 | 180 / 248 | 73% |
-| 몬스터 | 89 / 117 | 76% |
-| 인카운터 | 68 / 88 | 77% |
+| 파워 | 184 / 248 | 74% |
+| 몬스터 | 91 / 117 | 78% |
+| 인카운터 | 69 / 88 | 78% |
 | 오브 | 5 / 5 | 100% |
-| **전투 코어 소계** | **845 / 1051** | **80%** |
+| **전투 코어 소계** | **852 / 1051** | **81%** |
 | 렐릭 | 22 / 297 | 7% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
 | **런 콘텐츠 소계** | **22 / 420** | **5%** |
 
-전투 자체는 약 80%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
+전투 자체는 약 81%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
 없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
 
-다음은 [`S1.M3.B19 — 후속 구현 배치 19`](#-s1m3b19--후속-구현-배치-19-계획).
+다음은 [`S1.M3.B20 — 후속 구현 배치 20`](#-s1m3b20--후속-구현-배치-20-계획).
 
 ---
 
@@ -635,12 +635,52 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
   SlumberingBeetle 원본 3체 구성으로 복원
 - [x] `test_sts2_s1_m3_b18.py` 및 루트 회귀 27스위트 전체 통과
 
-## 📋 `S1.M3.B19 — 후속 구현 배치 19` (계획)
+## ✅ `S1.M3.B19 — 몬스터·인카운터 배치 19` (완료)
+
+- [x] **Kaiser Crab 보스 2종** — Crusher(HP 209, `THRASH` 12 →
+  `ENLARGING_STRIKE` 4 → `BUG_STING` 6×2+약화2+허약2 → `ADAPT` 힘+2 →
+  `GUARDED_STRIKE` 12+블록18)와 Rocket(HP 199, `TARGETING_RETICLE` 3 →
+  `PRECISION_BEAM` 18 → `CHARGE_UP` 힘+2 → `LASER` 31 → `RECHARGE` 무행동)의
+  고정 5무브 순환 이식. 두 팔 모두 Doom으로 사라지지 않음
+- [x] **BackAttackLeftPower / BackAttackRightPower** — Crusher·Rocket의 좌우를
+  표시하는 원본 마커 파워
+- [x] **CrabRagePower** — 한 팔이 죽으면 남은 팔에 힘+6과 언파워드 블록99를
+  지급하고 1회 발동 후 제거
+- [x] **SurroundedPower** — 기본 `facing=right`에서 Crusher의 파워드 공격만
+  1.5배. 한 팔 사망 후 남은 팔을 향하도록 원본 조건에 따라 방향 갱신
+- [x] **인카운터 1종** — `kaiser_crab_boss`의 Crusher/Rocket 슬롯 구성 재현
+- [x] `test_sts2_s1_m3_b19.py` 및 루트 회귀 28스위트 전체 통과
+- [ ] 원본의 카드·포션 대상 선택 시 방향 전환은 현재 카드 대상 통지와 포션
+  시스템이 없어 보류
+
+## ✅ `S1.M3.B20 — CeremonialBeast / PlowPower / RingingPower` (완료)
+
+- [x] **CeremonialBeast** (HP 252, 보스) — STAMP→PLow 순환, HP 150 이하 전이
+  (힘 상실+기절), 이후 BEAST_CRY→STOMP→CRUSH 순환. RingingPower 부여
+- [x] **PlowPower** — 매 턴 자동 PLow, 플레이어 HP가 임계치 이하면 힘 상실+기절
+- [x] **RingingPower** — 카드 사용 시 반사 피해
+- [x] **인카운터** — `ceremonial_beast_boss` 구성 추가
+- [x] `test_sts2_s1_m3_b20.py` 및 전체 회귀 31스위트 통과
+
+## ✅ `S1.M3.B21 — KnowledgeDemon / Curse 선택 4종 / 파워 4종` (완료)
+
+- [x] **KnowledgeDemon** (HP 379, 보스) — Curse 선택 카드 메커니즘, 힘 스케일링
+- [x] **Curse 선택 카드 4종** — MindRot/Sloth/WasteAway/Disintegration (상태이상)
+- [x] **파워 4종** — MindRotPower/SlothPower/WasteAwayPower/DisintegrationPower
+- [x] **인카운터** — `knowledge_demon_boss` 구성 추가
+- [x] `test_sts2_s1_m3_b21.py` 및 전체 회귀 31스위트 통과
+
+## ✅ `S1.M3.B22 — TheAdversary Mk1~Mk3 시험 몬스터` (완료)
+
+- [x] **TheAdversary Mk1/Mk2/Mk3** — 개발용 테스트 몬스터 (스케일링 검증용)
+- [x] `test_sts2_s1_m3_b22.py` 및 전체 회귀 31스위트 통과
+
+## 📋 `S1.M3.B23 — 후속 구현 배치 23` (계획)
 
 아래 잔여 대상 중 선행 의존성이 작은 묶음을 원본 대조 후 선정한다. Affliction,
 Curse 선택, 다체 보스처럼 별도 엔진이 필요한 대상은 한 Batch에 억지로 섞지 않는다.
 
-### 몬스터 잔여 16종 — 차단 요인별 분류
+### 몬스터 잔여 14종 — 차단 요인별 분류
 
 인카운터가 실제로 배치하는 대상 기준(개발용 클래스, 렐릭 전용 소환 펫
 Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 파워"는
@@ -649,9 +689,8 @@ Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 �
 | 몬스터 | HP | 필요한 미이식 파워 | 비고 |
 |---|---|---|---|
 | InfestedPrism | 161 | `VitalSparkPower` | Affliction/Tainted 시스템 필요 |
-| CeremonialBeast | 252 | `PlowPower`, `RingingPower` | |
-| Crusher | 209 | `BackAttackLeftPower`, `CrabRagePower` | Rocket과 함께 등장 |
-| ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | |
+| CeremonialBeast | 252 | `PlowPower`, `RingingPower` | Ringing 카드 Affliction 필요 |
+| ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | 영구 덱 절취·사망 시 보상 반환 필요 |
 | KnowledgeDemon | 379 | 없음 | Curse 선택 카드/즉시 선택 효과 필요 |
 | LivingFog + GasBomb | 80 / 7 | `SmoggyPower` | **Affliction 시스템**(카드 단위 상태이상) 필요 |
 | Fabricator + Axebot/Rocket | | | 무작위 봇 소환 |
@@ -705,6 +744,7 @@ python3 test_sts2_phase6t.py      # 배치15 (ToughEgg/Ovicopter)
 python3 test_sts2_phase6u.py      # 배치16 (Tunneler/SlumberingBeetle/OwlMagistrate)
 python3 test_sts2_phase6v.py      # 배치17 (Entomancer/KinFollower/TorchHeadAmalgam)
 python3 test_sts2_s1_m3_b18.py    # 배치18 (Bowlbug 4종/Imbalanced/인카운터)
+python3 test_sts2_s1_m3_b19.py    # 배치19 (Crusher/Rocket/Kaiser Crab 보스)
 ```
 
 **통계 실행:**
