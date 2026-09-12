@@ -436,7 +436,10 @@ class Plating(STS2Power):
     def apply(self, owner, applier=None) -> None:
         fresh = self.power_id not in owner._powers
         super().apply(owner, applier)
-        if fresh:
+        # 개전 Plating을 가진 적만 첫 플레이어 턴 전에 블록을 받는다.
+        # 플레이어의 Plating(Gorget/카드)은 턴 종료 지급부터 시작한다.
+        from sts2_sim.entities.player import Player
+        if fresh and not isinstance(owner, Player):
             owner.gain_block(owner._powers[self.power_id].amount, powered=False)
 
     def on_turn_end(self) -> None:
@@ -632,7 +635,7 @@ class Aggression(STS2Power):
         for card in attacks[:self.amount]:
             combat.discard_pile.remove(card)
             combat.hand.append(card)
-            if not card.upgraded:
+            if card.is_upgradable:
                 card.upgrade()
 
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Python 3.11+ headless Slay the Spire 2 simulator. Runtime code uses only the standard library. The implementation is a fidelity port of the C# game data and behavior in `sts2.dll`, `sts2.xml`, and the locally decompiled sources under `decompiled/`; use those sources to resolve unclear card, power, monster, and encounter semantics. Port the non-Ascension/default values unless the task explicitly adds Ascension handling.
 
-The README contains historical architecture and commands that no longer match the active code. In particular, the live combat/run path uses `random.Random`, duck-typed power hooks, a fixed floor plan, and root-level `test_sts2_*.py` scripts—not `SeededRng`, `HookBus`, a full map/event run, or `test_full_run.py`. Prefer current code and regression tests when documentation disagrees.
+The README contains historical architecture and commands that no longer match the active code. In particular, the live combat/run path uses `random.Random`, duck-typed power hooks, a fixed floor plan, and `tests/test_sts2_*.py` scripts—not `SeededRng`, `HookBus`, a full map/event run, or `test_full_run.py`. Prefer current code and regression tests when documentation disagrees.
 
 ## Product goal and roadmap
 
@@ -18,7 +18,7 @@ The final goal is an AI mod capable of clearing Slay the Spire 2. Work toward it
 
 The repository is currently in the simulation stage. Prioritize simulation fidelity, coverage, and deterministic regression checks over speculative AI or mod infrastructure. Keep policy code separable from game mechanics, but do not add future-facing interfaces or integration layers until the current stage needs them.
 
-New work uses the hierarchical Stage/Milestone/Batch IDs defined in `ROADMAP.md` (for example, `S1.M3.B18`); do not create new alphabetic Phase suffixes. Preserve existing `test_sts2_phase*.py` names as historical IDs. For new regression files, replace dots with underscores (for example, `test_sts2_s1_m3_b18.py`), while runtime monster modules continue their domain sequence (for example, `monsters_batch18.py`).
+New work uses the hierarchical Stage/Milestone/Batch IDs defined in `ROADMAP.md` (for example, `S1.M3.B18`); do not create new alphabetic Phase suffixes. Preserve existing `tests/test_sts2_phase*.py` names as historical IDs. For new regression files, replace dots with underscores (for example, `tests/test_sts2_s1_m3_b18.py`), while runtime monster modules continue their domain sequence (for example, `monsters_batch18.py`).
 
 ## Commands
 
@@ -31,14 +31,14 @@ $env:PYTHONIOENCODING = "utf-8"
 Run one regression suite:
 
 ```powershell
-python test_sts2_phase6l.py
+python -m tests.test_sts2_phase6l
 ```
 
-Run every root regression suite and stop at the first failure:
+Run every regression suite and stop at the first failure:
 
 ```powershell
-Get-ChildItem test_sts2_*.py | ForEach-Object {
-    python $_.FullName
+Get-ChildItem tests/test_sts2_*.py | ForEach-Object {
+    python -m "tests.$($_.BaseName)"
     if ($LASTEXITCODE -ne 0) { throw "Failed: $($_.Name)" }
 }
 ```
@@ -46,16 +46,17 @@ Get-ChildItem test_sts2_*.py | ForEach-Object {
 Run one assert-based test function without pytest:
 
 ```powershell
-python -c "from test_sts2_phase6l import test_registry_and_encounters; test_registry_and_encounters()"
+python -c "from tests.test_sts2_phase6l import test_registry_and_encounters; test_registry_and_encounters()"
 ```
 
-If the optional dev dependencies are installed, the equivalent pytest selection is:
+If the optional dev dependencies are installed, the equivalent pytest selections are:
 
 ```powershell
-python -m pytest test_sts2_phase6l.py::test_registry_and_encounters
+python -m pytest
+python -m pytest tests/test_sts2_phase6l.py::test_registry_and_encounters
 ```
 
-Do not rely on bare `pytest`: `pyproject.toml` currently points `testpaths` at `sts2_sim`, while the active regression suites live at the repository root. There is no configured lint command. No verified package-build command is currently part of the development workflow; use the regression scripts as the authoritative check.
+`pyproject.toml` points `testpaths` at `tests`, so bare `python -m pytest` discovers the active regression suites. There is no configured lint or verified package-build command; use the regression scripts as the authoritative check.
 
 Run multi-seed simulations:
 

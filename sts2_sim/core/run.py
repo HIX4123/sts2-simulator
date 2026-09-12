@@ -1,11 +1,11 @@
 """
-STS2 런 루프 — 단순화된 층 진행 (전투/휴식/엘리트) + 덱 성장.
-실제 STS2 맵 그래프는 미이식 (Phase 6): 난이도 단계별 고정 층 시퀀스로 대체.
+STS2 런 루프 — 단순화된 층 진행 (전투/휴식/엘리트/보스) + 덱 성장.
+실제 STS2 맵 그래프는 미이식: 난이도 단계별 고정 층 시퀀스로 대체.
 
 진행 요소:
   - 전투 승리 시 캐릭터 풀에서 카드 1장 보상 (덱에 추가)
   - 휴식: HP 60% 미만이면 회복, 아니면 무작위 미업그레이드 카드 업그레이드
-  - 층 구성: 쉬움(E1) → 중간(E2) → 엘리트 순 난이도 상승
+  - 층 구성: 쉬움(N1) → 중간(N2) → 엘리트(E) → 보스(B) 순 난이도 상승
 """
 from __future__ import annotations
 import random
@@ -14,7 +14,8 @@ from typing import List, Optional
 
 from sts2_sim.core.combat import CombatState, SimplePolicy
 from sts2_sim.core.encounters import (
-    EASY_POOL, MEDIUM_POOL, ELITE_POOL, random_encounter_from,
+    EASY_POOL, MEDIUM_POOL, HARD_POOL, ELITE_POOL, BOSS_POOL,
+    random_encounter_from,
 )
 from sts2_sim.entities.player import Player
 from sts2_sim.entities.sts2_character import create_character
@@ -26,8 +27,8 @@ from sts2_sim.cards.necrobinder import NECROBINDER_POOL_BY_RARITY
 from sts2_sim.cards.regent import REGENT_POOL_BY_RARITY
 
 
-# 층 시퀀스: N1=쉬운 전투, N2=중간 전투, R=휴식, E=엘리트
-DEFAULT_FLOOR_PLAN = ["N1", "N1", "R", "N2", "N2", "R", "E"]
+# 층 시퀀스: N1=쉬운 전투, N2=중간 전투, R=휴식, E=엘리트, H=하드, B=보스
+DEFAULT_FLOOR_PLAN = ["N1", "N1", "R", "N2", "N2", "R", "E", "B"]
 
 # 전투 보상 카드 풀 (캐릭터별 — 이식된 카드 한정)
 REWARD_POOLS = {
@@ -72,7 +73,10 @@ class RunState:
     REWARD_GOLD_MIN = 10
     REWARD_GOLD_MAX = 20
 
-    POOL_BY_ROOM = {"N1": EASY_POOL, "N2": MEDIUM_POOL, "E": ELITE_POOL}
+    POOL_BY_ROOM = {
+        "N1": EASY_POOL, "N2": MEDIUM_POOL, "H": HARD_POOL,
+        "E": ELITE_POOL, "B": BOSS_POOL,
+    }
 
     def __init__(self, character_id: str = "ironclad", seed: int = 0):
         self.rng = random.Random(seed)
@@ -87,7 +91,7 @@ class RunState:
     def _rest(self, floor_num: int, log: List[str]) -> None:
         """휴식: 회복 또는 업그레이드."""
         hp_ratio = self.character.current_hp / self.character.max_hp
-        upgradable = [c for c in self.deck if not c.upgraded]
+        upgradable = [c for c in self.deck if c.is_upgradable]
         if hp_ratio < self.REST_HEAL_THRESHOLD or not upgradable:
             heal = int(self.character.max_hp * self.REST_HEAL_RATIO)
             self.character.heal(heal)

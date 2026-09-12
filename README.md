@@ -10,18 +10,17 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 카드 | 503종 | Ironclad 85 / Silent 86 / Defect 86 / Necrobinder 82 / Regent 82 / Colorless 65 완전 이식 + 스타터·상태이상·토큰 |
-| 파워 | 184종 | 데미지·블록·비용 수정, 카드 플레이/소모/생성 훅 배선 |
-| 몬스터 | 91종 | 상태 머신 AI. 보스 SoulFysh / LagavulinMatriarch / WaterfallGiant / Vantom / KaiserCrab 포함 |
-| 인카운터 | 69종 | 원본 `GenerateMonsters()` 구성 로직 재현 (미이식/자체 구성 4종은 코드 주석 표기) |
+| 카드 | 507종 | Ironclad 85 / Silent 86 / Defect 86 / Necrobinder 82 / Regent 82 / Colorless 65 완전 이식 + 스타터·상태이상·토큰 |
+| 파워 | 190종 | 데미지·블록·비용 수정, 카드 플레이/소모/생성 훅 배선 |
+| 몬스터 | 96종 | 상태 머신 AI. 보스 SoulFysh / LagavulinMatriarch / WaterfallGiant / Vantom / KaiserCrab 포함 |
+| 인카운터 | 71종 | 원본 `GenerateMonsters()` 구성 로직 재현 (미이식/자체 구성은 코드 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 렐릭 | 22종 | 스타터 5종은 실제 동작 |
+| 렐릭 | 50종 | STS2 원본 동작 이식 |
 | 오브 | 5종 | Lightning / Frost / Dark / Plasma / Glass + OrbQueue |
-| 테스트 | 28개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 35개 스위트 | 전부 통과, 시드 재현성 보장 |
 
-원본(디컴파일) 대비 이식률은 전투 코어(카드·파워·몬스터·인카운터·오브)
-약 **81%**, 런 콘텐츠(렐릭·포션·이벤트) 약 **5%**입니다. 현재 작업 위치는
-**`S1.M3.B19 — 몬스터·인카운터 배치 19` 완료**이며, Stage·Milestone·Batch
+현재 작업 위치는 **`S1.M3.B26 — 렐릭 배치 26` 완료**이며,
+Stage·Milestone·Batch
 ID 규약과 다음 작업은 [ROADMAP.md](ROADMAP.md), 세부 구현 현황은
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)를 참고하세요.
 
@@ -36,18 +35,21 @@ $env:PYTHONIOENCODING = "utf-8"
 
 회귀 스위트 1개 실행:
 
-```bash
-python test_sts2_phase6n.py
+```powershell
+python -m tests.test_sts2_phase6n
 ```
 
-루트 회귀 스위트 전체 실행 (첫 실패에서 중단):
+`tests/` 회귀 스위트 전체 실행 (첫 실패에서 중단):
 
 ```powershell
-Get-ChildItem test_sts2_*.py | ForEach-Object {
-    python $_.FullName
+Get-ChildItem tests/test_sts2_*.py | ForEach-Object {
+    python -m "tests.$($_.BaseName)"
     if ($LASTEXITCODE -ne 0) { throw "Failed: $($_.Name)" }
 }
 ```
+
+선택적 개발 의존성이 설치되어 있으면 `python -m pytest`로 전체 테스트를
+자동 탐색할 수도 있습니다.
 
 시드 기반 다회 시뮬레이션:
 
@@ -58,9 +60,9 @@ python -m sts2_sim.core.stats ironclad 5 --policy greedy --verbose
 
 `--verbose`는 앞 5회 런에 대해서만 턴/카드 단위 상세 로그를 남깁니다.
 
-> 각 스위트는 `main()`으로 직접 실행되며 pytest로도 수집됩니다. 다만
-> `pyproject.toml`의 `testpaths`가 `sts2_sim`을 가리키고 있어 인자 없는
-> `pytest`로는 루트 스위트가 실행되지 않습니다 — 파일을 직접 지정하세요.
+> 각 스위트는 `main()`으로 직접 실행되며 pytest로도 수집됩니다.
+> `pyproject.toml`의 `testpaths`가 `tests`를 가리키므로 `python -m pytest`로
+> 전체 회귀 스위트를 자동 탐색할 수 있습니다.
 
 ## 프로젝트 구조
 
@@ -81,6 +83,8 @@ sts2_sim/
 │   ├── sts2_monster.py   # MonsterModel + 무브 상태 머신
 │   └── monsters_*.py     # 이식 배치별 몬스터
 └── models/         # 카드/파워/렐릭/오브 모델 + 레지스트리
+tests/
+└── test_sts2_*.py  # 단계·배치별 실행형 회귀 스위트
 ```
 
 `import sts2_sim`이 카드 모듈을 전부 임포트하며, 각 모듈이 임포트 시점에

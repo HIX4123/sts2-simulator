@@ -114,7 +114,7 @@ class Armaments(_Block):
         source.gain_block(5)
         if combat is None:
             return
-        upgradable = [c for c in combat.hand if not c.upgraded]
+        upgradable = [c for c in combat.hand if c.is_upgradable]
         if self.upgraded:
             for card in upgradable:
                 card.upgrade()

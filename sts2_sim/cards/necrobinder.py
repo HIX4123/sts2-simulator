@@ -224,7 +224,7 @@ class DrainPower(STS2Card):
             return
         n = 3 if self.upgraded else 2
         for _ in range(n):
-            upgradable = [c for c in combat.discard_pile if not c.upgraded]
+            upgradable = [c for c in combat.discard_pile if c.is_upgradable]
             if not upgradable:
                 break
             combat.rng.choice(upgradable).upgrade()

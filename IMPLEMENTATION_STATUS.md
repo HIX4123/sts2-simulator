@@ -7,14 +7,14 @@
 
 | 시스템 | 개수 | 비고 |
 |--------|------|------|
-| 몬스터 | 91종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom/KaiserCrab 포함) |
-| 인카운터 | 69종 | 실제 구성 로직 (미이식/자체 구성 4종은 주석 표기) |
+| 몬스터 | 96종 | 상태 머신 AI, 실제 HP/데미지 (보스 SoulFysh/LagavulinMatriarch/WaterfallGiant/Vantom/KaiserCrab 포함) |
+| 인카운터 | 71종 | 실제 구성 로직 (미이식/자체 구성은 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 카드 | 503종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
-| 파워 | 184종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
-| 렐릭 | 22종 | 스타터 5종은 실제 동작 |
+| 카드 | 507종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
+| 파워 | 190종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
+| 렐릭 | 50종 | STS2 원본 동작 이식 (S1.M3.B26: 전투 훅 4종 추가) |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 28개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 35개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -29,7 +29,7 @@ sts2_sim/
 ├─ models/
 │  ├─ sts2_power.py      # 파워 120종
 │  ├─ sts2_card.py       # 카드 베이스 + 스타터 16종 + 상태이상 5종
-│  ├─ sts2_relic.py      # 렐릭 22종
+│  ├─ sts2_relic.py      # 렐릭 50종
 │  └─ sts2_orb.py        # 오브 5종 + OrbQueue (상한 10/EvokeLast/이보크 훅)
 ├─ cards/
 │  ├─ ironclad.py        # Phase 6b: Ironclad 풀 82종 (C19/U35/R25/Ancient2/Token1)
@@ -58,7 +58,7 @@ sts2_sim/
 
 ※ Watcher는 STS2에 존재하지 않음 (디컴파일로 확인).
 
-## 👹 몬스터 91종
+## 👹 몬스터 96종
 
 **기본 (sts2_monster.py):** BigDummy, SingleAttack/MultiAttackMoveMonster(테스트),
 TwigSlimeS/M, Stabbot, Zapbot, Guardbot, AxeRubyRaider, FlailKnight, DampCultist,
@@ -133,6 +133,19 @@ BowlbugNectar(HP 35~38, 3딜 → 힘+15 → 공격 반복), BowlbugRock(HP 45~48
 SurroundedPower가 바라보지 않는 팔의 파워드 공격을 1.5배로 만들고, 한 팔이
 죽으면 CrabRagePower가 남은 팔에 힘+6·언파워드 블록99를 지급한다.
 `kaiser_crab_boss` 원본 2슬롯 구성 추가.
+
+**`S1.M3.B20~B22`:** CeremonialBeast 보스와 Plow/Ringing, KnowledgeDemon
+보스와 Curse 선택 카드·파워 4종, 개발용 TheAdversary Mk1~Mk3를 이식했다.
+
+## 🧿 렐릭 50종
+
+스타터 5종과 전투 훅만으로 정확히 재현 가능한 공용 렐릭 11종을 STS2 원본대로
+이식했다. B23에서 STS1 기반 날조 12종을 제거하고 Anchor/Akabeko/
+OddlySmoothStone/MercuryHourglass/TungstenRod를 교정했으며,
+BagOfPreparation/BloodVial/BronzeScales/Gorget/Lantern/Vajra를 추가했다.
+렐릭 HP 손실 수정 단계를 파워의 Late 단계 앞에 배선하고, Anchor의 개전 블록이
+플레이어 첫 턴 시작에 소거되지 않도록 원본 턴 순서를 복원했다. Plating의 개전
+즉시 블록은 적에게만 적용된다.
 
 특수 메카닉: RandomBranchState(가중치/CannotRepeat/UseOnlyOnce/**cooldown**·
 **max_repeats** — Phase 6k에서 엔진 확장, 아래 참고), 조건 분기(LivingShield,
@@ -391,7 +404,7 @@ Rare 25, 원본부터 그러함) + 신규 파워 16종.
     미보유 조건 유지
   - Entropy가 변환 대상 카드의 강화 상태를 대체 카드에 강제로 이전(원본
     Transform 파이프라인은 업그레이드 상태를 전혀 전달하지 않음) → 제거
-  - 전부 원본 대조 후 수정 및 회귀 테스트 추가 (`test_sts2_phase6g.py`)
+  - 전부 원본 대조 후 수정 및 회귀 테스트 추가 (`tests/test_sts2_phase6g.py`)
 - **기지 차이로 문서화(수정 보류, ROADMAP.md Phase 6g+ 참조):**
   - **Entropy 대체 카드 풀**: 원본은 변환 대상 "카드 자신이 속한 풀"(Colorless
     카드라면 ColorlessCardPool)에서 대체 카드를 뽑지만, 카드별 소속 풀 조회
@@ -428,7 +441,7 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
     동일 메커니즘으로 수정
   - `SleightOfFlesh` 반사 피해가 `take_damage()`를 우회(`lose_hp` 직접 호출)해
     블록을 무시하던 것을 수정(원본은 `Unpowered`만 설정, `Unblockable` 아님)
-- 회귀 테스트 8종(`test_sts2_phase6g.py`), 13스위트 + 5캐릭터 20시드 stats 전부
+- 회귀 테스트 8종(`tests/test_sts2_phase6g.py`), 13스위트 + 5캐릭터 20시드 stats 전부
   Phase 6h 기준과 완전 동일 (그리디 정책이 해당 엣지 케이스에 도달하지 않음 —
   스택 조합이 실제 플레이에서 드묾)
 - **후속: Vulnerable/Colossus/Cruelty/Conqueror `IsPoweredAttack()` 게이트**
@@ -483,8 +496,8 @@ Phase 6g 검증에서 발견된 3개 기지 차이를 해소하는 후속 Phase.
   `DevotedSculptor`(+9)/`DampCultist`(+5)/`CalcifiedCultist`(+2) 3종에 영향,
   해당 전투 수치가 미세하게(스킵된 한 틱만큼) 변경됨을 `git stash` 전/후
   비교로 확인(다른 Phase와 달리 이번은 의도적 수치 변경)
-- 회귀 테스트: 신규 `test_sts2_phase6j.py`(14개) + 기존
-  `test_sts2_phase2.py`/`test_sts2_phase4.py`의 Ritual 타이밍 테스트 재작성
+- 회귀 테스트: 신규 `tests/test_sts2_phase6j.py`(14개) + 기존
+  `tests/test_sts2_phase2.py`/`tests/test_sts2_phase4.py`의 Ritual 타이밍 테스트 재작성
   — 14스위트 전체 통과
 - **최종 적대적 재검증**(Ritual 수정 엣지 케이스 전담 + encounters.py 배선
   충실도): Ritual 관련 잠재 이슈 3건(재적용/스택 시 스킵 재무장 누락,
@@ -610,7 +623,7 @@ applier 인자 누락(무해), FossilStalker의 펫 제외/그룹핑 로직(펫 
 누락/Vulnerable applier 누락(전부 단일플레이어 엔진에서 무관측), LouseProgenitor
 의 Curled 플래그 미이식(연출 전용, 재확인 완료).
 
-- 회귀 테스트: 신규 `test_sts2_phase6k.py`(21개) — 위 10건 버그 전부 재발
+- 회귀 테스트: 신규 `tests/test_sts2_phase6k.py`(21개) — 위 10건 버그 전부 재발
   방지 테스트 포함(Flyconid 균등가중치+쿨다운+폴백, FossilStalker 3연속
   금지, LouseProgenitor Frail-블록, SoulFysh Intangible 감쇠, Beckon+
   Intangible Cap, Thorns Unpowered 무반격, FlailKnight/TwigSlimeM 가중치
@@ -684,7 +697,7 @@ LagavulinMatriarch 포함.
    기존 손패 삽입 호출자(`monsters_batch7c.py`)도 함께 교정했다.
    이 항목은 리뷰가 "원본을 읽지 않고 쓴 주석"을 지적한 데서 출발했다 —
    주석의 주장 자체는 맞았지만 검증 과정에서 이식 불일치가 드러난 사례
-6. **`test_sts2_phase6.py` Plating 기대값 갱신** — Phase 6l의 개전 즉시 지급
+6. **`tests/test_sts2_phase6.py` Plating 기대값 갱신** — Phase 6l의 개전 즉시 지급
    변경(정당한 동작 수정)을 낡은 6a 테스트가 따라가지 못해 실패하던 상태.
    실제 코드가 원본과 일치함을 확인하고 테스트 쪽을 현행 사양으로 갱신
 
@@ -766,15 +779,54 @@ Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조�
    원본 findings를 전부 다시 읽어 하나씩 재검증 — 그 결과 confirmed 5건
    외에 추가로 4건을 더 확정했다)
 
+## ✅ S1.M3.B24 — 렐릭 확장
+
+전투 훅 완전 재현 가능한 렐릭 15종을 이식하고 회귀 테스트를 추가했다.
+
+- **이식한 렐릭**: BagOfMarbles, RedMask, FestivePopper, DataDisk,
+  Candelabra, Chandelier, TwistedFunnel, SymbioticVirus, RunicCapacitor,
+  Brimstone, OrnamentalFan, LetterOpener, Kunai, Shuriken, RainbowRing
+- **회귀 테스트**: 10개 테스트 케이스 추가 (첫 턴 효과, 정확한 턴,
+  카운터, RainbowRing, RELIC_REGISTRY)
+- **문서 갱신**: IMPLEMENTATION_STATUS.md의 렐릭 수(16→31),
+  테스트 스위트 수(32→33), B24 완료 섹션 추가
+
+## ✅ S1.M3.B25 — 런 루프 인카운터 해금 + 렐릭 배치 25
+
+런 루프에만 연결되면 즉시 콘텐츠 밀도가 올라가는 기존 보스·엘리트 인카운터를
+해금하고, 파이프라인 변경 없이 이식 가능한 렐릭 15종을 추가했다.
+
+- **런 루프 해금** (`core/run.py` + `core/encounters.py`):
+  `BOSS_POOL`(7종) 추가, `ELITE_POOL` 1→10종 확장, `POOL_BY_ROOM`에
+  `"B"`/`"H"` 룸 연결, `DEFAULT_FLOOR_PLAN`에 보스 층(`[…, "E", "B"]`, 8층) 추가.
+  기존에 작성만 돼 접근 불가했던 보스 7종·엘리트 10종·하드 2종이 실제로 배치됨.
+- **이식한 렐릭**: Sai, VeryHotCocoa, HappyFlower, Pendulum, HornCleat,
+  CaptainsWheel, MrStruggles, RoyalPoison, Nunchaku, TuningFork, IronClub,
+  Kusarigama, LostWisp, BlackBlood, Pocketwatch (`RelicRarity`에
+  `ANCIENT`/`EVENT` 멤버 추가)
+- **회귀 테스트**: 22개 테스트 케이스 추가 (`tests/test_sts2_s1_m3_b25.py`)
+- **문서 갱신**: IMPLEMENTATION_STATUS.md의 렐릭 수(31→46), B25 완료 섹션 추가
+
+## ✅ S1.M3.B26 — 렐릭 배치 26
+
+현재 전투 훅과 카드 업그레이드 경로만으로 원본 동작을 재현 가능한 렐릭 4종을
+추가하고, 원본 `CardModel.IsUpgradable` 판정을 공용 카드 모델에 복원했다.
+
+- **이식한 렐릭**: Permafrost(전투당 최초 파워 사용 시 블록 7),
+  StoneCracker(전투 시작 시 뽑을 더미 2장 무작위 업그레이드),
+  ArtOfWar(직전 턴 공격 미사용 시 에너지 1), RazorTooth(사용한 공격·스킬 업그레이드)
+- **카드 업그레이드 정합성**: `STS2Card.max_upgrade_level`/`is_upgradable` 추가,
+  구현된 MaxUpgradeLevel 0 상태 카드가 휴식·카드·파워·렐릭 업그레이드 후보가 되지 않게 통일
+- **회귀 테스트**: 7개 테스트 케이스 추가 (`tests/test_sts2_s1_m3_b26.py`)
+- **문서 갱신**: 렐릭 수 46→50, 전체 회귀 스위트 34→35
+
 ## 🚀 다음 단계
 
-ROADMAP.md의 **`S1.M3.B20 — 후속 구현 배치 20`** 참조 — 몬스터
-잔여 14종. ROADMAP에 몬스터별 필요 파워 표(디컴파일 스캔 결과)를 실어
-두었으니 재조사 없이 그대로 쓸 것.
-그 밖에 렐릭 297종 풀, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension.
+ROADMAP.md의 **`S1.M3.B27 — 지속 콘텐츠 확장`** 참조. 다음은 잔여
+렐릭, 몬스터, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension을 계속 확장한다.
 
 **원본 대비 이식률** (디컴파일 `Models.*`의 `: XxxModel` 파생 클래스 기준):
-전투 코어(카드·파워·몬스터·인카운터·오브) **852/1051 ≈ 81%**,
-런 콘텐츠(렐릭·포션·이벤트) **22/420 ≈ 5%**. 클래스 수로 드러나지 않는
+전투 코어(카드·파워·몬스터·인카운터·오브) **869/1051 ≈ 83%**,
+런 콘텐츠(렐릭·포션·이벤트) **50/420 ≈ 12%**. 클래스 수로 드러나지 않는
 공백으로 `core/run.py`의 축소된 런 루프(고정 층 시퀀스, 맵 그래프·상점·
 이벤트 방 없음)가 있다.

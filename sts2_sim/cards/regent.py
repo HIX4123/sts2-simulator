@@ -176,9 +176,7 @@ class Debris(STS2Card):
     rarity = Rarity.TOKEN
     cost = 1
     exhausts = True
-
-    def upgrade(self) -> None:
-        pass  # MaxUpgradeLevel 0
+    max_upgrade_level = 0
 
 
 # ══════════════════════════════════════════

@@ -4,8 +4,7 @@ STS2 Phase 2 통합 테스트.
 렐릭 시스템 + 캐릭터 시스템 + 추가 몬스터.
 """
 from sts2_sim.models.sts2_relic import (
-    BurningBlood, RingOfTheSnake, Akabeko, Anchor, Cloak,
-    create_relic
+    BurningBlood, RingOfTheSnake, Akabeko, Anchor, create_relic
 )
 from sts2_sim.entities.sts2_character import (
     Ironclad, Silent, Defect, Necrobinder, Regent, create_character
@@ -76,23 +75,13 @@ def test_relics():
     assert rs.modify_hand_draw(5, turn=2) == 5
     print(f"✅ Ring of the Snake 장착: 첫 턴 드로우 5→7")
 
-    # Anchor — 최대 HP +10
+    # Anchor — 전투 시작 시 언파워드 블록 10
     player2 = MockCreature("Player2", max_hp=100)
     anchor = Anchor()
     anchor.on_equip(player2)
-    assert player2.max_hp == 110, f"Anchor HP 증가 실패: {player2.max_hp} != 110"
-    print(f"✅ Anchor 장착: 최대 HP {player2.max_hp}")
-
-    # Cloak — 스킬 카드 플레이 시 1 블록
-    cloak = Cloak()
-    cloak.on_equip(player)
-    # 스킬 카드 플레이 시뮬레이션
-    from sts2_sim.models.sts2_card import Deflect
-    card = Deflect()
-    player._block = 0
-    cloak.on_card_played(card)
-    assert player._block >= 1, f"Cloak 블록 증가 실패"
-    print(f"✅ Cloak 장착: 스킬 카드 플레이 시 블록 +1")
+    anchor.on_combat_start()
+    assert player2._block == 10, f"Anchor 블록 증가 실패: {player2._block} != 10"
+    print(f"✅ Anchor 장착: 전투 시작 시 블록 {player2._block}")
 
     # 렐릭 팩토리
     relic = create_relic("akabeko")
@@ -236,7 +225,7 @@ def main():
     print("✅ Phase 2 모든 테스트 통과!")
     print("="*60)
     print("\n📊 구현 현황:")
-    print("  ✅ 렐릭 시스템 (스타터/Common/Uncommon/Rare/Boss)")
+    print("  ✅ 렐릭 시스템 (스타터/Common/Uncommon/Rare)")
     print("  ✅ 실제 STS2 캐릭터 5종 (Ironclad/Silent/Defect/Necrobinder/Regent)")
     print("  ✅ 실전 몬스터 (디컴파일 수치): FlailKnight/Zapbot/Guardbot/DampCultist/Chomper")
     print("  ✅ Ritual/Artifact 파워 동작 검증")

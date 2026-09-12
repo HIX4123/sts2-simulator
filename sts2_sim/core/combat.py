@@ -351,7 +351,7 @@ class CombatState:
                 return self._finish(False)
 
             # ── 플레이어 턴 ──
-            self.player.start_of_turn()
+            self.player.start_of_turn(clear_block=self.turn > 1)
             self.cards_exhausted_this_turn = 0
             self.attacks_played_this_turn = 0
             self.skills_played_this_turn = 0
@@ -658,7 +658,7 @@ class CombatState:
         self.player._first_attack_this_turn = False
 
         for relic in self.player.relics:
-            relic.on_card_played(card)
+            relic.on_card_played(card, self)
         self.notify_card_played(card)
         self._broadcast_card_played(card, paid)  # RightHandHand — 버림 더미 회수
         self._trigger_strangle()
@@ -863,7 +863,7 @@ class CombatState:
         self._settle_card(card, force_exhaust=force_exhaust)
         self.player._first_attack_this_turn = False
         for relic in self.player.relics:
-            relic.on_card_played(card)
+            relic.on_card_played(card, self)
         self.notify_card_played(card)
         self._auto_playing = prev_auto
         self._broadcast_card_played(card, 0)

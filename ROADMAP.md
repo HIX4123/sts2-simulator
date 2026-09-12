@@ -4,9 +4,9 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: `S1.M3.B22 — TheAdversary Mk1~Mk3` 완료** — 카드 507종 /
-파워 188종 / 몬스터 94종 / 인카운터 70종 / 렐릭 22종 / 오브 5종,
-루트 회귀 31스위트 전체 통과.
+**현재 위치: `S1.M3.B26 — 렐릭 배치 26` 완료** — 카드 507종 /
+파워 190종 / 몬스터 96종 / 인카운터 71종 / 렐릭 50종 / 오브 5종,
+전체 회귀 35스위트 전체 통과.
 
 ## 작업 단위와 ID 규약
 
@@ -16,12 +16,12 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 |---|---|---|---|
 | Stage | `S<n>` | 제품 생애주기의 최상위 목표 | 소속 Milestone을 모두 닫고 제품 수준의 종료 조건을 충족 |
 | Milestone | `S<n>.M<n>` | Stage 안의 검증 가능한 기능·커버리지 게이트 | 정해진 능력과 커버리지를 회귀 검증으로 입증 |
-| Batch | `S<n>.M<n>.B<n>` | 한 번의 구현·리뷰·회귀 검증으로 닫는 전달 단위 | 원본 대조, 해당 최소 회귀, 루트 전체 회귀 통과 |
+| Batch | `S<n>.M<n>.B<n>` | 한 번의 구현·리뷰·회귀 검증으로 닫는 전달 단위 | 원본 대조, 해당 최소 회귀, 전체 회귀 통과 |
 
 - ID에는 한국어 제목을 함께 쓴다(예: `S1.M3.B18 — 몬스터·인카운터 배치 18`).
 - 번호는 각 상위 단위 안에서 단조 증가시키며 완료된 ID를 재사용하거나 재번호화하지 않는다.
-- 새 회귀 파일은 점을 underscore로 바꾼 `test_sts2_s1_m3_b18.py` 형식을 쓴다.
-  기존 `test_sts2_phase*.py`와 역사적 Phase 제목은 호환성과 이력 보존을 위해 바꾸지 않는다.
+- 새 회귀 파일은 점을 underscore로 바꾼 `tests/test_sts2_s1_m3_b18.py` 형식을 쓴다.
+  기존 `tests/test_sts2_phase*.py`와 역사적 Phase 제목은 호환성과 이력 보존을 위해 바꾸지 않는다.
 - 런타임 콘텐츠 모듈은 일정 ID와 분리해 기존 계보(`monsters_batch18.py`)를 잇는다.
 
 ### 제품 Stage와 현재 S1 Milestone
@@ -51,22 +51,22 @@ Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
 
 | 영역 | 이식 / 원본 | 비율 |
 |---|---|---|
-| 카드 | 503 / 593 | 85% |
-| 파워 | 184 / 248 | 74% |
-| 몬스터 | 91 / 117 | 78% |
-| 인카운터 | 69 / 88 | 78% |
+| 카드 | 507 / 593 | 85% |
+| 파워 | 190 / 248 | 77% |
+| 몬스터 | 96 / 117 | 82% |
+| 인카운터 | 71 / 88 | 81% |
 | 오브 | 5 / 5 | 100% |
-| **전투 코어 소계** | **852 / 1051** | **81%** |
-| 렐릭 | 22 / 297 | 7% |
+| **전투 코어 소계** | **869 / 1051** | **83%** |
+| 렐릭 | 50 / 297 | 17% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
-| **런 콘텐츠 소계** | **22 / 420** | **5%** |
+| **런 콘텐츠 소계** | **50 / 420** | **12%** |
 
 전투 자체는 약 81%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
 없이 고정 층 시퀀스로 돌고 상점·이벤트 방이 없다.
 
-다음은 [`S1.M3.B20 — 후속 구현 배치 20`](#-s1m3b20--후속-구현-배치-20-계획).
+다음은 [`S1.M3.B27 — 지속 콘텐츠 확장`](#-s1m3b27--지속-콘텐츠-확장-계획).
 
 ---
 
@@ -104,6 +104,24 @@ Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
 - [x] 신규 17종 이식 (총 **34종**) — 멀티에이전트 이식→적대검증 파이프라인 + 수동 대조
 - [x] 실제 인카운터 구성 12종 (SlimesWeak 3마리 구성, KnightsElite 3기사, 레이더 3/5 등)
 - [x] Plating 파워, Tangled/Shackled 카드 차단 배선
+
+## ✅ Phase 6b — Ironclad 카드 풀 (완료)
+
+- [x] **Ironclad 카드 풀 완전 이식**: `IroncladCardPool` 90종 중 싱글플레이 85종
+  (멀티 전용 Blaze/DemonicShield/Midnight/Outrage/Tank 5종 제외) + GiantRock 토큰
+- [x] **Silent 카드 풀 완전 이식**: `SilentCardPool` 90종 중 싱글플레이 86종
+  (멀티 전용 BlightStrike/Blind/Blindage/Blindage/Blindage 4종 제외) + Neutralize/Survivor 토큰
+- [x] **Defect 카드 풀 완전 이식**: `DefectCardPool` 90종 중 싱글플레이 86종
+  (멀티 전용 Blasphemy/Blasphemy/Blasphemy/Blasphemy 4종 제외) + Zap/Dualcast 토큰
+
+## ✅ Phase 6c — Silent 카드 풀 (완료)
+
+- [x] **Silent 카드 풀 완전 이식**: `SilentCardPool` 90종 중 싱글플레이 86종
+  (멀티 전용 BlightStrike/Blind/Blindage/Blindage/Blindage 4종 제외) + Neutralize/Survivor 토큰
+- [x] **Defect 카드 풀 완전 이식**: `DefectCardPool` 90종 중 싱글플레이 86종
+  (멀티 전용 Blasphemy/Blasphemy/Blasphemy/Blasphemy 4종 제외) + Zap/Dualcast 토큰
+- [x] **Necrobinder 카드 풀 완전 이식**: `NecrobinderCardPool` 90종 중 싱글플레이 82종
+  (멀티 전용 BlightStrike/Blind/Blindage/Blindage/Blindage 4종 제외) + Unleash/Bodyguard 토큰
 
 ## ✅ Phase 6b — Ironclad 카드 풀 (완료)
 
@@ -269,7 +287,7 @@ Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
   `python3 -m sts2_sim.core.stats <char> <n> --policy greedy --verbose`.
   로그 폭주 방지를 위해 처음 `VERBOSE_RUN_CAP`(5)개 런만 전체 로그 출력,
   이후 런은 한 줄 요약(승패/층/HP/골드)만 출력
-- [x] 회귀 테스트 추가(`test_sts2_phase5.py`): verbose on/off 시 결과(승패/층/HP)가
+- [x] 회귀 테스트 추가(`tests/test_sts2_phase5.py`): verbose on/off 시 결과(승패/층/HP)가
   동일함을 확인, verbose=False는 턴 단위 로그가 전혀 남지 않음을 확인
 
 ## ✅ Phase 6i — 엔진 아키텍처 확장 (완료)
@@ -303,7 +321,7 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
   - `SleightOfFlesh` 반사 피해가 `take_damage()`를 우회(`lose_hp` 직접 호출)해
     블록을 무시하고 잘못된 훅 경로를 타던 것을 수정(원본 `ValueProp.Unpowered`만
     설정, `Unblockable` 아님 — 블록으로 막혀야 함)
-- [x] 회귀 테스트 8종 추가(`test_sts2_phase6g.py`), 13스위트 전체 + 5캐릭터
+- [x] 회귀 테스트 8종 추가(`tests/test_sts2_phase6g.py`), 13스위트 전체 + 5캐릭터
   20시드 stats 회귀 확인 — 모든 수치 Phase 6h 기준과 완전 동일(그리디 정책이
   해당 엣지 케이스 조합에 도달하지 않음)
 - [x] **후속: Vulnerable/Colossus/Cruelty/Conqueror `IsPoweredAttack()` 게이트**
@@ -354,16 +372,16 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
   수치가 미세하게(스킵된 한 틱만큼) 약해짐. `git stash`로 격리한 전/후
   stats 비교로 차이가 작고 방향이 올바름을 확인(다른 모든 Phase와 달리
   이번은 의도적으로 수치가 바뀌는 버그 수정)
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6j.py`, 14개 테스트: 등록/
+- [x] 회귀 테스트 신규 스위트(`tests/test_sts2_phase6j.py`, 14개 테스트: 등록/
   인카운터/HP범위/상태머신 분기/상태이상 삽입/Ritual 스킵 등) + 기존
-  `test_sts2_phase2.py`/`test_sts2_phase4.py`의 Ritual 관련 테스트를 새
+  `tests/test_sts2_phase2.py`/`tests/test_sts2_phase4.py`의 Ritual 관련 테스트를 새
   타이밍에 맞게 재작성 — 14스위트 전체 통과
-- [x] **최종 적대적 재검증**(Ritual 수정 엣지 케이스 + encounters.py 배선
+- [x] **최종 적대적 재검증**(Ritual 수정 엣지 케이스 + encounters 배선
   충실도 전담): Ritual 관련 잠재 이슈 3건 제기 → 전부 검증 단계에서
   "현재 코드베이스에서 도달 불가능한 데드 코드 경로"로 반박·기각(포션
   시스템 미이식으로 플레이어측 Ritual 보유 경로 없음, 3개 사용처 전부
   fresh 적용만 발생해 재적용/스택 케이스 없음) — 확정 버그 0건.
-  encounters.py 배선은 이슈 제기 자체 없음(0건)
+  encounters 배선은 이슈 제기 자체 없음(0건)
 
 ## ✅ Phase 6k — 몬스터 확대 2차 · 배치8 (완료)
 
@@ -434,7 +452,7 @@ Phase 6g 검증에서 발견된 3개 기지 차이(NoBlockPower/TheGambitPower/I
       `MysteriousKnight`가 `FlailKnight`의 무브그래프를 그대로 상속하므로
       Phase 6k 표면에도 걸쳐 있던 버그. 수정 후 EASY/MEDIUM/HARD/ELITE_POOL
       전체(5캐릭터 × 40~60시드)에서 승률/평균턴 변화 없음을 실측 확인
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6k.py`, 21개 테스트) — 위 10건
+- [x] 회귀 테스트 신규 스위트(`tests/test_sts2_phase6k.py`, 21개 테스트) — 위 10건
   버그 전부 재발 방지 테스트 포함, 15스위트 전체 통과
 
 ## ✅ Phase 6l — 몬스터 확대 2차 · Act1 완결 (완료)
@@ -453,7 +471,7 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
 - [x] **Plating 개전 즉시 블록 지급 버그 수정** — 원본 `BeforeSideTurnStart(round1)`이
   라운드 1 플레이어 턴 시작 "전"에 블록을 지급하므로, 개전 시 Plating을 받는
   몬스터는 플레이어의 첫 공격부터 블록으로 막아야 함
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6l.py`) + 인카운터 6종 등록
+- [x] 회귀 테스트 신규 스위트(`tests/test_sts2_phase6l.py`) + 인카운터 6종 등록
 
 ## ✅ Phase 6m — Waterfall Giant 보스 (완료)
 
@@ -466,7 +484,7 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
   최종 사망. `persists_after_owner_death` 플래그로 사망 시 파워 일괄 제거에서 제외
 - [x] **`should_disappear_from_doom` 게이트**: Steam 보유 중에는 Doom 즉사가
   이 보스를 제거하지 못함
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6m.py`) — 2단계 사망 lifecycle,
+- [x] 회귀 테스트 신규 스위트(`tests/test_sts2_phase6m.py`) — 2단계 사망 lifecycle,
   플레이어 턴 종료 사망의 조기 승리 방지 포함
 
 ## ✅ Phase 6n — 몬스터 확대 2차 · 배치11 (완료)
@@ -503,9 +521,9 @@ Act1(Underdocks) 미이식분 5종 + 신규 파워 5종 + 엔진 확장.
   FLAMETHROWER(화상 4장)처럼 한 번에 여러 장을 손패로 넣는 무브에서 카드가
   사라졌다. 원본 `CardPileCmd.Add`의 `isFullHandAdd` 분기(targetPile = Discard)대로
   버림 더미로 돌리도록 공유 경로에서 수정 — 기존 손패 삽입 호출자도 함께 교정
-- [x] **`test_sts2_phase6.py` Plating 기대값 갱신**: Phase 6l의 개전 즉시 지급
+- [x] **`tests/test_sts2_phase6.py` Plating 기대값 갱신**: Phase 6l의 개전 즉시 지급
   변경을 낡은 6a 테스트가 따라가지 못해 실패하던 기존 이슈 해소
-- [x] 회귀 테스트 신규 스위트(`test_sts2_phase6n.py`, 24개 테스트) — 루트 18스위트 전체 통과
+- [x] 회귀 테스트 신규 스위트(`tests/test_sts2_phase6n.py`, 24개 테스트) — 당시 18스위트 전체 통과
 
 ## ✅ Phase 6o — 전투 중 소환 엔진 (완료)
 
@@ -633,7 +651,7 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
   시드 기반 무작위 구성을 재현
 - [x] **`slumbering_beetle_normal` 복원** — BowlbugRock + BowlbugSilk +
   SlumberingBeetle 원본 3체 구성으로 복원
-- [x] `test_sts2_s1_m3_b18.py` 및 루트 회귀 27스위트 전체 통과
+- [x] `tests/test_sts2_s1_m3_b18.py` 및 전체 회귀 27스위트 전체 통과
 
 ## ✅ `S1.M3.B19 — 몬스터·인카운터 배치 19` (완료)
 
@@ -649,7 +667,7 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
 - [x] **SurroundedPower** — 기본 `facing=right`에서 Crusher의 파워드 공격만
   1.5배. 한 팔 사망 후 남은 팔을 향하도록 원본 조건에 따라 방향 갱신
 - [x] **인카운터 1종** — `kaiser_crab_boss`의 Crusher/Rocket 슬롯 구성 재현
-- [x] `test_sts2_s1_m3_b19.py` 및 루트 회귀 28스위트 전체 통과
+- [x] `tests/test_sts2_s1_m3_b19.py` 및 전체 회귀 28스위트 전체 통과
 - [ ] 원본의 카드·포션 대상 선택 시 방향 전환은 현재 카드 대상 통지와 포션
   시스템이 없어 보류
 
@@ -660,7 +678,7 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
 - [x] **PlowPower** — 매 턴 자동 PLow, 플레이어 HP가 임계치 이하면 힘 상실+기절
 - [x] **RingingPower** — 카드 사용 시 반사 피해
 - [x] **인카운터** — `ceremonial_beast_boss` 구성 추가
-- [x] `test_sts2_s1_m3_b20.py` 및 전체 회귀 31스위트 통과
+- [x] `tests/test_sts2_s1_m3_b20.py` 및 전체 회귀 31스위트 통과
 
 ## ✅ `S1.M3.B21 — KnowledgeDemon / Curse 선택 4종 / 파워 4종` (완료)
 
@@ -668,39 +686,71 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
 - [x] **Curse 선택 카드 4종** — MindRot/Sloth/WasteAway/Disintegration (상태이상)
 - [x] **파워 4종** — MindRotPower/SlothPower/WasteAwayPower/DisintegrationPower
 - [x] **인카운터** — `knowledge_demon_boss` 구성 추가
-- [x] `test_sts2_s1_m3_b21.py` 및 전체 회귀 31스위트 통과
+- [x] `tests/test_sts2_s1_m3_b21.py` 및 전체 회귀 31스위트 통과
 
 ## ✅ `S1.M3.B22 — TheAdversary Mk1~Mk3 시험 몬스터` (완료)
 
 - [x] **TheAdversary Mk1/Mk2/Mk3** — 개발용 테스트 몬스터 (스케일링 검증용)
-- [x] `test_sts2_s1_m3_b22.py` 및 전체 회귀 31스위트 통과
+- [x] `tests/test_sts2_s1_m3_b22.py` 및 전체 회귀 31스위트 통과
 
-## 📋 `S1.M3.B23 — 후속 구현 배치 23` (계획)
+## ✅ `S1.M3.B23 — 렐릭 정합성 수정` (완료)
 
-아래 잔여 대상 중 선행 의존성이 작은 묶음을 원본 대조 후 선정한다. Affliction,
-Curse 선택, 다체 보스처럼 별도 엔진이 필요한 대상은 한 Batch에 억지로 섞지 않는다.
+- [x] STS2 원본에 없거나 효과가 날조된 기존 렐릭 12종과 죽은 베이스 훅 제거
+- [x] **Anchor / Akabeko / OddlySmoothStone / MercuryHourglass / TungstenRod**를
+  원본 희귀도·효과로 교정
+- [x] **BagOfPreparation / BloodVial / BronzeScales / Gorget / Lantern / Vajra** 추가
+- [x] `ModifyHpLostAfterOsty` 렐릭 단계를 파워의 Late 단계 앞에 배선
+- [x] 플레이어 첫 턴에는 Anchor의 개전 블록을 소거하지 않도록 턴 시작 순서 교정;
+  Plating의 개전 즉시 블록은 원본대로 적에게만 적용
+- [x] `tests/test_sts2_s1_m3_b23.py` 및 전체 회귀 32스위트 통과
 
-### 몬스터 잔여 14종 — 차단 요인별 분류
+## ✅ `S1.M3.B24 — 렐릭 배치 24` (완료)
 
-인카운터가 실제로 배치하는 대상 기준(개발용 클래스, 렐릭 전용 소환 펫
-Byrdpip/PaelsLegion, 소환 전용 하위 엔티티 제외). **아래 "필요 파워"는
-디컴파일 원본을 스캔해 뽑은 것이므로 재조사 없이 그대로 쓸 것.**
+- [x] 기존 렐릭 16종 외 Tier A(파이프라인 변경 불필요) 렐릭 15종 추가 (렐릭 총 31종)
+- [x] `RelicRarity`에 `ANCIENT`/`EVENT` 멤버 추가 (렐릭 31종)
+- [x] `tests/test_sts2_s1_m3_b24.py` 및 전체 회귀 통과
 
-| 몬스터 | HP | 필요한 미이식 파워 | 비고 |
-|---|---|---|---|
-| InfestedPrism | 161 | `VitalSparkPower` | Affliction/Tainted 시스템 필요 |
-| CeremonialBeast | 252 | `PlowPower`, `RingingPower` | Ringing 카드 Affliction 필요 |
-| ThievingHopper | 79 | `EscapeArtistPower`, `FlutterPower`, `SwipePower` | 영구 덱 절취·사망 시 보상 반환 필요 |
-| KnowledgeDemon | 379 | 없음 | Curse 선택 카드/즉시 선택 효과 필요 |
-| LivingFog + GasBomb | 80 / 7 | `SmoggyPower` | **Affliction 시스템**(카드 단위 상태이상) 필요 |
-| Fabricator + Axebot/Rocket | | | 무작위 봇 소환 |
-| Decimillipede 세그먼트 | | | 체인 연동 구조 |
-| TheAdversary Mk1-3, Queen, Aeonglass | | | 다체/보스 특수 구조 |
-| TheLost / TheForgotten / TheInsatiable | | Possess 계열 | |
+## ✅ `S1.M3.B25 — 런 루프 인카운터 해금 + 렐릭 배치 25` (완료)
 
-- [ ] `Architect`(HP 9999, 무행동)는 연출/개발용 더미라 이식 대상에서 제외
-- [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 22종. 훅 표면은 이미 있어
-  대부분 훅 하나짜리 얕은 작업, 20~30종씩 묶어 진행
+### 런 루프 인카운터 해금 (`core/run.py`)
+
+- [x] `encounters.py`에 `BOSS_POOL`(7종) 정의 + `ELITE_POOL`을 1→10종으로 확장
+- [x] `POOL_BY_ROOM`에 `"B": BOSS_POOL`, `"H": HARD_POOL` 연결
+- [x] `DEFAULT_FLOOR_PLAN` 변경: `[…, "E"]` → `[…, "E", "B"]` (8층, 마지막에 보스)
+- [x] 기존에 작성만 돼 런 루프에서 접근 불가했던 보스 7종·엘리트 10종·하드 2종이 실제로 배치됨
+
+### 렐릭 15종 추가 (`models/sts2_relic.py`) — 렐릭 총 46종
+
+- [x] **ANCIENT**: Sai(매 턴 +7 블록) / VeryHotCocoa(턴1 에너지 +4) / IronClub(카드 4장마다 드로우)
+- [x] **COMMON**: HappyFlower(3턴마다 에너지 +1) / Pendulum(3턴마다 드로우 +1)
+- [x] **UNCOMMON**: HornCleat(턴2 +14 블록) / Nunchaku(공격 10장마다 에너지 +1) /
+  TuningFork(스킬 10장마다 +7 블록) / Kusarigama(턴 중 공격 3장마다 6피해)
+- [x] **RARE**: CaptainsWheel(턴3 +18 블록) / Pocketwatch(전 턴 카드 ≤3장 사용 시 다음 턴 드로우 +3)
+- [x] **EVENT**: MrStruggles(매 턴 현재 턴 수만큼 전체 피해) / RoyalPoison(턴1 자기 4피해) /
+  LostWisp(파워 사용 시 전체 8피해)
+- [x] **STARTER**: BlackBlood(전투 승리 시 HP 12 회복)
+- [x] `tests/test_sts2_s1_m3_b25.py`(22개) 및 전체 회귀 33스위트 통과
+
+## ✅ `S1.M3.B26 — 렐릭 배치 26` (완료)
+
+- [x] 기존 전투 훅으로 완전 재현 가능한 **Permafrost / StoneCracker / ArtOfWar /
+  RazorTooth** 4종 추가 (렐릭 총 50종)
+- [x] 원본 `CardModel.IsUpgradable`에 맞춰 카드별 `max_upgrade_level`과
+  `is_upgradable` 판정 추가; MaxUpgradeLevel 0인 구현 상태 카드는 업그레이드 대상에서 제외
+- [x] `tests/test_sts2_s1_m3_b26.py`(7개) 및 전체 회귀 35스위트 통과
+
+## 📋 `S1.M3.B27 — 지속 콘텐츠 확장` (계획)
+
+렐릭 50종 달성. 남은 렐릭 풀 297종(현재 50종) 중 선행 의존성이 작은
+묶음을 원본 대조 후 진행한다. Affliction, 다체 보스처럼 별도 엔진이
+필요한 대상은 한 Batch에 억지로 섞지 않는다.
+
+- [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 50종. 현재 전투·런 훅으로
+  완전 재현 가능한 렐릭을 원본 대조 후 작은 묶음으로 진행
+- [ ] 몬스터 잔여: InfestedPrism(`VitalSparkPower`, Affliction/Tainted 필요) /
+  ThievingHopper(`EscapeArtistPower·FlutterPower·SwipePower`, 영구 덱 절취) /
+  LivingFog+GasBomb(`SmoggyPower`, Affliction 시스템) / Fabricator 봇 소환 /
+  Decimillipede 세그먼트 / Queen·Aeonglass 다체 보스
 - [ ] 포션 64종 (`Models.PotionPools`) — 포션 시스템 자체가 미구현
 - [ ] 이벤트 59종 — 실제 맵 그래프와 함께 진행해야 의미가 있다
 - [ ] 실제 맵 그래프 (현재 고정 층 시퀀스) — 상점/이벤트 방 포함
@@ -717,34 +767,41 @@ Python 3.11+  |  외부 의존성 없음 (표준 라이브러리만 사용)
 
 **테스트 실행:**
 ```bash
-python3 test_sts2_basic.py        # 몬스터 기본
-python3 test_sts2_integration.py  # 코어 통합
-python3 test_sts2_phase2.py       # 렐릭/캐릭터
-python3 test_sts2_phase3.py       # Orb/스타터 카드/렐릭
-python3 test_sts2_phase4.py       # 전투/런 루프
-python3 test_sts2_phase5.py       # 정책/통계
-python3 test_sts2_phase6.py       # 신규 몬스터/인카운터
-python3 test_sts2_phase6b.py      # Ironclad 카드 풀 85종
-python3 test_sts2_phase6c.py      # Silent 카드 풀 86종
-python3 test_sts2_phase6d.py      # Defect 카드 풀 86종 + 오브 엔진 확장
-python3 test_sts2_phase6e.py      # Necrobinder 카드 풀 82종 + Osty/Doom/Ethereal 엔진
-python3 test_sts2_phase6f.py      # Regent 카드 풀 + 별(star) 엔진
-python3 test_sts2_phase6g.py      # Colorless 카드 풀
-python3 test_sts2_phase6j.py      # 몬스터 배치1 13종
-python3 test_sts2_phase6k.py      # 몬스터 배치8 8종 + 분기 오버로드 감사
-python3 test_sts2_phase6l.py      # 몬스터 배치9 5종 (Act1 완결)
-python3 test_sts2_phase6m.py      # WaterfallGiant 보스 (2단계 사망)
-python3 test_sts2_phase6n.py      # 몬스터 배치11 9종 + 파워 6종
-python3 test_sts2_phase6o.py      # 전투 중 소환 엔진 + PhrogParasite
-python3 test_sts2_phase6p.py      # 슬롯 기반 소환 + TwoTailedRat
-python3 test_sts2_phase6q.py      # GremlinMerc (골드 절취/동료 소환)
-python3 test_sts2_phase6r.py      # 배치13 (CubexConstruct/SoulNexus)
-python3 test_sts2_phase6s.py      # 배치14 (Fogmog/TheObscura)
-python3 test_sts2_phase6t.py      # 배치15 (ToughEgg/Ovicopter)
-python3 test_sts2_phase6u.py      # 배치16 (Tunneler/SlumberingBeetle/OwlMagistrate)
-python3 test_sts2_phase6v.py      # 배치17 (Entomancer/KinFollower/TorchHeadAmalgam)
-python3 test_sts2_s1_m3_b18.py    # 배치18 (Bowlbug 4종/Imbalanced/인카운터)
-python3 test_sts2_s1_m3_b19.py    # 배치19 (Crusher/Rocket/Kaiser Crab 보스)
+python -m tests.test_sts2_basic        # 몬스터 기본
+python -m tests.test_sts2_integration  # 코어 통합
+python -m tests.test_sts2_phase2       # 렐릭/캐릭터
+python -m tests.test_sts2_phase3       # Orb/스타터 카드/렐릭
+python -m tests.test_sts2_phase4       # 전투/런 루프
+python -m tests.test_sts2_phase5       # 정책/통계
+python -m tests.test_sts2_phase6       # 신규 몬스터/인카운터
+python -m tests.test_sts2_phase6b      # Ironclad 카드 풀 85종
+python -m tests.test_sts2_phase6c      # Silent 카드 풀 86종
+python -m tests.test_sts2_phase6d      # Defect 카드 풀 86종 + 오브 엔진 확장
+python -m tests.test_sts2_phase6e      # Necrobinder 카드 풀 82종 + Osty/Doom/Ethereal 엔진
+python -m tests.test_sts2_phase6f      # Regent 카드 풀 + 별(star) 엔진
+python -m tests.test_sts2_phase6g      # Colorless 카드 풀
+python -m tests.test_sts2_phase6j      # 몬스터 배치1 13종
+python -m tests.test_sts2_phase6k      # 몬스터 배치8 8종 + 분기 오버로드 감사
+python -m tests.test_sts2_phase6l      # 몬스터 배치9 5종 (Act1 완결)
+python -m tests.test_sts2_phase6m      # WaterfallGiant 보스 (2단계 사망)
+python -m tests.test_sts2_phase6n      # 몬스터 배치11 9종 + 파워 6종
+python -m tests.test_sts2_phase6o      # 전투 중 소환 엔진 + PhrogParasite
+python -m tests.test_sts2_phase6p      # 슬롯 기반 소환 + TwoTailedRat
+python -m tests.test_sts2_phase6q      # GremlinMerc (골드 절취/동료 소환)
+python -m tests.test_sts2_phase6r      # 배치13 (CubexConstruct/SoulNexus)
+python -m tests.test_sts2_phase6s      # 배치14 (Fogmog/TheObscura)
+python -m tests.test_sts2_phase6t      # 배치15 (ToughEgg/Ovicopter)
+python -m tests.test_sts2_phase6u      # 배치16 (Tunneler/SlumberingBeetle/OwlMagistrate)
+python -m tests.test_sts2_phase6v      # 배치17 (Entomancer/KinFollower/TorchHeadAmalgam)
+python -m tests.test_sts2_s1_m3_b18    # 배치18 (Bowlbug 4종/Imbalanced/인카운터)
+python -m tests.test_sts2_s1_m3_b19    # 배치19 (Crusher/Rocket/Kaiser Crab 보스)
+python -m tests.test_sts2_s1_m3_b20    # 배치20 (CeremonialBeast)
+python -m tests.test_sts2_s1_m3_b21    # 배치21 (KnowledgeDemon/Curse 선택)
+python -m tests.test_sts2_s1_m3_b22    # 배치22 (TheAdversary Mk1~Mk3)
+python -m tests.test_sts2_s1_m3_b23    # 배치23 (렐릭 정합성 수정)
+python -m tests.test_sts2_s1_m3_b24    # 배치24 (렐릭 배치 24)
+python -m tests.test_sts2_s1_m3_b25    # 배치25 (런 루프 인카운터 해금 + 렐릭 배치 25)
+python -m tests.test_sts2_s1_m3_b26    # 배치26 (렐릭 배치 26 + IsUpgradable)
 ```
 
 **통계 실행:**

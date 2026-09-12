@@ -122,6 +122,7 @@ class STS2Card:
     tags: frozenset = frozenset()  # CardTag (예: "strike" — PerfectedStrike/Hellraiser 참조)
     is_sly: bool = False      # Sly — 버려질 때(효과에 의한 버리기) 무료 자동 플레이
     retains: bool = False     # Retain — 턴 종료 시 손패에 유지
+    max_upgrade_level: int = 1
 
     def __init__(self):
         self.upgraded = False
@@ -146,7 +147,13 @@ class STS2Card:
         """카드 사용. combat은 전투 컨텍스트 (드로우/오브 등 필요 시)."""
         pass
 
+    @property
+    def is_upgradable(self) -> bool:
+        return self.times_upgraded < self.max_upgrade_level
+
     def upgrade(self) -> None:
+        if not self.is_upgradable:
+            return
         self.upgraded = True
         self.times_upgraded += 1
 
@@ -474,6 +481,7 @@ class Dazed(STS2Card):
     rarity = Rarity.TOKEN
     cost = 0
     playable = False
+    max_upgrade_level = 0
 
     def __init__(self):
         super().__init__()
@@ -481,13 +489,18 @@ class Dazed(STS2Card):
 
 
 class Slimed(STS2Card):
-    """슬라임 범벅 — 1코스트, 효과 없음, 소모 (TwigSlimeM STICKY_SHOT 등)."""
+    """슬라임 범벅 — 1코스트, 카드 1장 드로우 후 소모."""
     card_id = "slimed"
     name = "Slimed"
     card_type = CardType.STATUS
     rarity = Rarity.TOKEN
     cost = 1
     exhausts = True
+    max_upgrade_level = 0
+
+    def use(self, source, targets, combat=None) -> None:
+        if combat:
+            combat.draw_cards(1)
 
 
 class Wound(STS2Card):
@@ -498,6 +511,7 @@ class Wound(STS2Card):
     rarity = Rarity.TOKEN
     cost = 0
     playable = False
+    max_upgrade_level = 0
 
 
 class Burn(STS2Card):
@@ -508,6 +522,7 @@ class Burn(STS2Card):
     rarity = Rarity.TOKEN
     cost = 0
     playable = False
+    max_upgrade_level = 0
 
     def on_turn_end_in_hand(self, source, combat) -> None:
         source.take_damage(2, source=None, powered=False)
@@ -522,6 +537,7 @@ class Infection(STS2Card):
     rarity = Rarity.TOKEN
     cost = 0
     playable = False
+    max_upgrade_level = 0
 
     def on_turn_end_in_hand(self, source, combat) -> None:
         source.take_damage(3, source=None, powered=False)
@@ -536,6 +552,7 @@ class Toxic(STS2Card):
     rarity = Rarity.TOKEN
     cost = 1
     exhausts = True
+    max_upgrade_level = 0
 
     def on_turn_end_in_hand(self, source, combat) -> None:
         source.take_damage(5, source=None, powered=False)
@@ -550,6 +567,7 @@ class Beckon(STS2Card):
     card_type = CardType.STATUS
     rarity = Rarity.TOKEN
     cost = 1
+    max_upgrade_level = 0
 
     def on_turn_end_in_hand(self, source, combat) -> None:
         source.take_damage(6, source=None, powered=False, unblockable=True)
@@ -563,6 +581,7 @@ class Void(STS2Card):
     rarity = Rarity.TOKEN
     cost = 0
     playable = False
+    max_upgrade_level = 0
 
     def __init__(self):
         super().__init__()
@@ -580,6 +599,7 @@ class Disintegration(STS2Card):
     rarity = Rarity.TOKEN
     cost = -1
     playable = False
+    max_upgrade_level = 0
 
     def on_chosen(self, owner, amount: int = 6) -> None:
         from sts2_sim.models.sts2_power import DisintegrationPower
@@ -594,6 +614,7 @@ class MindRot(STS2Card):
     rarity = Rarity.TOKEN
     cost = -1
     playable = False
+    max_upgrade_level = 0
 
     def on_chosen(self, owner) -> None:
         from sts2_sim.models.sts2_power import MindRotPower
@@ -608,6 +629,7 @@ class Sloth(STS2Card):
     rarity = Rarity.TOKEN
     cost = -1
     playable = False
+    max_upgrade_level = 0
 
     def on_chosen(self, owner) -> None:
         from sts2_sim.models.sts2_power import SlothPower
@@ -622,6 +644,7 @@ class WasteAway(STS2Card):
     rarity = Rarity.TOKEN
     cost = -1
     playable = False
+    max_upgrade_level = 0
 
     def on_chosen(self, owner) -> None:
         from sts2_sim.models.sts2_power import WasteAwayPower

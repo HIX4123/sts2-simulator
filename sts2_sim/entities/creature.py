@@ -256,6 +256,11 @@ class Creature:
 
     def lose_hp(self, amount: int, from_damage: bool = False) -> int:
         """HP 감소. from_damage=False(카드/자해)일 때만 on_hp_lost 트리거 (Rupture)."""
+        # 렐릭은 ModifyHpLostAfterOsty, 파워는 그 뒤의 Late 단계다.
+        for relic in getattr(self, "relics", ()):
+            modify = getattr(relic, "modify_hp_lost", None)
+            if modify:
+                amount = modify(amount)
         # Buffer 등 HP 손실 수정 파이프라인 (원본 ModifyHpLostAfterOstyLate)
         for p in list(self._powers.values()):
             modify = getattr(p, "modify_hp_lost", None)
@@ -299,11 +304,11 @@ class Creature:
         self._max_hp = max(1, new_max_hp)
         self._current_hp = min(self._current_hp, self._max_hp)
 
-    def start_of_turn(self) -> None:
+    def start_of_turn(self, clear_block: bool = True) -> None:
         """턴 시작: 블록 초기화 (Barricade/Blur/Burrowed 보유 시 유지 — 원본
         ShouldClearBlock이 false를 반환하는 파워들), 턴별 카운터 리셋."""
-        if not (self.has_power("barricade") or self.has_power("blur")
-                or self.has_power("burrowed")):
+        if clear_block and not (self.has_power("barricade") or self.has_power("blur")
+                                or self.has_power("burrowed")):
             self._block = 0
         self.hp_lost_this_turn = 0
 

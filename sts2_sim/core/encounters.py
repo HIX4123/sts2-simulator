@@ -317,7 +317,27 @@ EASY_POOL = ["slimes_weak", "bots_normal", "gremlins_weak"]
 MEDIUM_POOL = ["raiders_normal", "vine_shambler_normal", "sewer_clam_normal",
                "jaxfruit_normal", "cultists_normal", "mawler_normal"]
 HARD_POOL = ["chompers_normal", "globe_head_normal"]
-ELITE_POOL = ["knights_elite"]
+ELITE_POOL = [
+    "knights_elite",
+    "byrdonis_elite",
+    "skulking_colony_elite",
+    "terror_eel_elite",
+    "phantasmal_gardeners_elite",
+    "mecha_knight_elite",
+    "bygone_effigy_elite",
+    "phrog_parasite_elite",
+    "soul_nexus_elite",
+    "entomancer_elite",
+]
+BOSS_POOL = [
+    "soul_fysh_boss",
+    "lagavulin_matriarch_boss",
+    "waterfall_giant_boss",
+    "vantom_boss",
+    "kaiser_crab_boss",
+    "ceremonial_beast_boss",
+    "knowledge_demon_boss",
+]
 NORMAL_POOL = EASY_POOL + MEDIUM_POOL
 
 
