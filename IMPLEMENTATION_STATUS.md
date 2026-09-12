@@ -12,9 +12,9 @@
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
 | 카드 | 507종 | **Ironclad 85 + Silent 86 + Defect 86 + Necrobinder 82 + Regent 82 + Colorless 65종 완전 이식** + 스타터/상태이상(Infection/Toxic/Beckon 포함)/토큰 (STS2 전체 593종 중) |
 | 파워 | 190종 | 비용 수정/자동 플레이/소모·버리기/생성·이보크 훅 배선 완료 |
-| 렐릭 | 50종 | STS2 원본 동작 이식 (S1.M3.B26: 전투 훅 4종 추가) |
+| 렐릭 | 69종 | STS2 원본 동작 이식 (S1.M3.B27: 디컴파일 원본 19종 추가) |
 | 오브 | 5종 | Lightning/Frost/Dark/Plasma/Glass + OrbQueue (슬롯 상한 10/EvokeLast/수동 패시브) |
-| 테스트 | 35개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 36개 스위트 | 전부 통과, 시드 재현성 보장 |
 
 ## 🏗️ 구조
 
@@ -820,13 +820,33 @@ Phase 6l 헤더부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조�
 - **회귀 테스트**: 7개 테스트 케이스 추가 (`tests/test_sts2_s1_m3_b26.py`)
 - **문서 갱신**: 렐릭 수 46→50, 전체 회귀 스위트 34→35
 
+## ✅ S1.M3.B27 — 렐릭 배치 27
+
+디컴파일 `MegaCrit.Sts2.Core.Models.Relics` 원본을 19종 대조해, 기존 전투·턴·
+드로우·카드 플레이 훅만으로 완전 재현 가능한 렐릭을 추가했다.
+
+- **전투 시작**: FakeAnchor(블록 4, Unpowered), SwordOfJade(힘 3),
+  PhylacteryUnbound(소환 5 + 2턴째부터 매턴 2 — BoundPhylactery와 동일 Osty 경로)
+- **턴 시작**: FakeBloodVial(1턴 HP 1), DivineDestiny(1턴 Stars 7),
+  FakeHappyFlower(5턴마다 에너지 1 — 원본 0-indexed 카운터 `(TurnsSeen+1)%5` 대응)
+- **드로우 수정**: RingOfTheDrake(3턴까지 +2), PaelsBlood(매턴 +1) — `modify_hand_draw`
+- **카드 플레이**: DaughterOfTheWind(공격마다 블록 1, Unpowered),
+  GamePiece(파워마다 드로우 1), PowerCell(1턴 0코스트 2장 손패로 — `combat.rng` 셔플)
+- **승리 회복**: MeatOnTheBone(HP≤50%일 때 12)
+- **획득 효과**: Mango(+14) · Pear(+10) · Strawberry(+7) · NutritiousOyster(+11) ·
+  FakeMango(+3) 최대HP 증가, LeesWaffle(+7 후 풀회복), FakeLeesWaffle(최대HP 10% 회복)
+  — `on_equip`에서 즉시 적용 (런 루프에 렐릭 보상이 없는 기존 구조 한계 내)
+- **회귀 테스트**: 16개 테스트 케이스 추가 (`tests/test_sts2_s1_m3_b27.py`),
+  전체 회귀 스위트 36개 전부 통과
+- **문서 갱신**: 렐릭 수 50→69, 전체 회귀 스위트 35→36
+
 ## 🚀 다음 단계
 
-ROADMAP.md의 **`S1.M3.B27 — 지속 콘텐츠 확장`** 참조. 다음은 잔여
+ROADMAP.md의 **`S1.M3.B28 — 지속 콘텐츠 확장`** 참조. 다음은 잔여
 렐릭, 몬스터, 포션 64종, 이벤트 59종, 실제 맵 그래프, Ascension을 계속 확장한다.
 
 **원본 대비 이식률** (디컴파일 `Models.*`의 `: XxxModel` 파생 클래스 기준):
 전투 코어(카드·파워·몬스터·인카운터·오브) **869/1051 ≈ 83%**,
-런 콘텐츠(렐릭·포션·이벤트) **50/420 ≈ 12%**. 클래스 수로 드러나지 않는
+런 콘텐츠(렐릭·포션·이벤트) **69/420 ≈ 16%**. 클래스 수로 드러나지 않는
 공백으로 `core/run.py`의 축소된 런 루프(고정 층 시퀀스, 맵 그래프·상점·
 이벤트 방 없음)가 있다.

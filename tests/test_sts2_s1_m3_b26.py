@@ -22,7 +22,8 @@ def make_combat(relic, deck=None, seed=1):
 
 
 def test_registry_has_50_relics():
-    assert len(RELIC_REGISTRY) == 50
+    # B27에서 69종으로 확장 — 하한만 유지 (신규 배치가 기존 항목을 지우지 않았는지 확인)
+    assert len(RELIC_REGISTRY) >= 50
     for relic_id in ("art_of_war", "permafrost", "razor_tooth", "stone_cracker"):
         assert relic_id in RELIC_REGISTRY
 

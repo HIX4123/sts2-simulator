@@ -15,11 +15,11 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 | 몬스터 | 96종 | 상태 머신 AI. 보스 SoulFysh / LagavulinMatriarch / WaterfallGiant / Vantom / KaiserCrab 포함 |
 | 인카운터 | 71종 | 원본 `GenerateMonsters()` 구성 로직 재현 (미이식/자체 구성은 코드 주석 표기) |
 | 캐릭터 | 5종 | Ironclad / Silent / Defect / Necrobinder / Regent |
-| 렐릭 | 50종 | STS2 원본 동작 이식 |
+| 렐릭 | 69종 | STS2 원본 동작 이식 |
 | 오브 | 5종 | Lightning / Frost / Dark / Plasma / Glass + OrbQueue |
-| 테스트 | 35개 스위트 | 전부 통과, 시드 재현성 보장 |
+| 테스트 | 36개 스위트 | 전부 통과, 시드 재현성 보장 |
 
-현재 작업 위치는 **`S1.M3.B26 — 렐릭 배치 26` 완료**이며,
+현재 작업 위치는 **`S1.M3.B27 — 렐릭 배치 27` 완료**이며,
 Stage·Milestone·Batch
 ID 규약과 다음 작업은 [ROADMAP.md](ROADMAP.md), 세부 구현 현황은
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)를 참고하세요.

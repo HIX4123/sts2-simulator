@@ -939,6 +939,285 @@ class BlackBlood(STS2Relic):
             self.owner.heal(12)
 
 
+# ══════════════════════════════════════════
+# B27 배치 — 디컴파일 MegaCrit.Sts2.Core.Models.Relics 원본 기준
+# ══════════════════════════════════════════
+
+class FakeAnchor(STS2Relic):
+    """가짜 닻 — 전투 시작 시 언파워드 블록 4 (원본 FakeAnchor.cs, BlockVar(4, Unpowered))."""
+    relic_id = "fake_anchor"
+    name = "Fake Anchor"
+    rarity = RelicRarity.EVENT
+    description = "전투 시작 시 블록 4 획득"
+
+    def on_combat_start(self, combat=None) -> None:
+        if self.owner:
+            self.owner.gain_block(4, powered=False)
+
+
+class SwordOfJade(STS2Relic):
+    """비취검 — 전투 입장 시 Strength 3 (원본 SwordOfJade.cs, AfterRoomEntered(CombatRoom))."""
+    relic_id = "sword_of_jade"
+    name = "Sword of Jade"
+    rarity = RelicRarity.EVENT
+    description = "전투 시작 시 힘 3 획득"
+
+    def on_combat_start(self, combat=None) -> None:
+        from sts2_sim.models.sts2_power import Strength
+        if self.owner:
+            self.owner.apply_power(Strength(3), applier=self.owner)
+
+
+class PhylacteryUnbound(STS2Relic):
+    """풀린 성물함 — 전투 시작 시 Osty 5 + 2턴째부터 매 턴 Osty 2 소환
+    (원본 PhylacteryUnbound.cs, SummonVar StartOfCombat=5 / StartOfTurn=2)."""
+    relic_id = "phylactery_unbound"
+    name = "Phylactery Unbound"
+    rarity = RelicRarity.STARTER
+    description = "전투 시작 시 Osty 5 소환, 2턴째부터 매 턴 Osty 2 소환"
+
+    def _summon(self, amount: int) -> None:
+        summon = getattr(self.owner, "summon_osty", None) if self.owner else None
+        if summon:
+            summon(amount)
+
+    def on_combat_start(self, combat=None) -> None:
+        self._summon(5)
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        if turn > 1:
+            self._summon(2)
+
+
+class MeatOnTheBone(STS2Relic):
+    """뼈 위의 고기 — HP가 최대치의 50% 이하인 상태로 승리하면 12 HP 회복
+    (원본 MeatOnTheBone.cs, HpThreshold=50, HealVar=12)."""
+    relic_id = "meat_on_the_bone"
+    name = "Meat on the Bone"
+    rarity = RelicRarity.RARE
+    description = "HP가 50% 이하일 때 전투에서 승리하면 12 HP 회복"
+
+    def on_combat_end(self, victory: bool) -> None:
+        if not victory or not self.owner or self.owner.is_dead:
+            return
+        if self.owner.current_hp <= (self.owner.max_hp * 50) // 100:
+            self.owner.heal(12)
+
+
+class FakeBloodVial(STS2Relic):
+    """가짜 피병 — 전투 첫 턴 시작 시 HP 1 회복 (원본 FakeBloodVial.cs, HealVar(1), TurnNumber<=1)."""
+    relic_id = "fake_blood_vial"
+    name = "Fake Blood Vial"
+    rarity = RelicRarity.EVENT
+    description = "전투 첫 턴 시작 시 HP 1 회복"
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        if turn <= 1 and self.owner:
+            self.owner.heal(1)
+
+
+class DivineDestiny(STS2Relic):
+    """신성한 운명 — 전투 첫 턴 시작 시 Stars 7 (원본 DivineDestiny.cs, StarsVar(7), TurnNumber<=1)."""
+    relic_id = "divine_destiny"
+    name = "Divine Destiny"
+    rarity = RelicRarity.STARTER
+    description = "전투 첫 턴 시작 시 별 7 획득"
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        if turn <= 1 and self.owner:
+            gain = getattr(self.owner, "gain_stars", None)
+            if gain:
+                gain(7)
+
+
+class FakeHappyFlower(STS2Relic):
+    """가짜 행복의 꽃 — 매 5번째 턴 시작 시 에너지 1 (원본 FakeHappyFlower.cs, Turns=5)."""
+    relic_id = "fake_happy_flower"
+    name = "Fake Happy Flower"
+    rarity = RelicRarity.EVENT
+    description = "5턴마다 에너지 1 획득"
+
+    def on_combat_start(self, combat=None) -> None:
+        self.counter = 0
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        # 원본은 0-indexed 카운터: 5턴째에 0. 자체 상태로만 반복 판정.
+        self.counter = (self.counter + 1) % 5
+        if self.counter == 0 and self.owner:
+            gain = getattr(self.owner, "gain_energy", None)
+            if gain:
+                gain(1)
+
+    def on_combat_end(self, victory: bool) -> None:
+        self.counter = 0
+
+
+class RingOfTheDrake(STS2Relic):
+    """드레이크의 반지 — 3턴까지 매 턴 카드 2장 추가 드로우 (원본 RingOfTheDrake.cs, Cards=2, Turns=3)."""
+    relic_id = "ring_of_the_drake"
+    name = "Ring of the Drake"
+    rarity = RelicRarity.STARTER
+    description = "3턴까지 매 턴 카드 2장 추가 드로우"
+
+    def modify_hand_draw(self, count: int, turn: int = 1) -> int:
+        if turn <= 3:
+            return count + 2
+        return count
+
+
+class PaelsBlood(STS2Relic):
+    """파엘의 피 — 매 턴 카드 1장 추가 드로우 (원본 PaelsBlood.cs, CardsVar(1))."""
+    relic_id = "paels_blood"
+    name = "Paels Blood"
+    rarity = RelicRarity.ANCIENT
+    description = "매 턴 카드 1장 추가 드로우"
+
+    def modify_hand_draw(self, count: int, turn: int = 1) -> int:
+        return count + 1
+
+
+class DaughterOfTheWind(STS2Relic):
+    """바람의 딸 — 공격 카드를 사용할 때마다 언파워드 블록 1 (원본 DaughterOfTheWind.cs, BlockVar(1, Unpowered))."""
+    relic_id = "daughter_of_the_wind"
+    name = "Daughter of the Wind"
+    rarity = RelicRarity.EVENT
+    description = "공격 카드를 사용할 때마다 블록 1 획득"
+
+    def on_card_played(self, card, combat=None) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type == CardType.ATTACK and self.owner:
+            self.owner.gain_block(1, powered=False)
+
+
+class GamePiece(STS2Relic):
+    """말 장수 — 파워 카드를 사용할 때마다 카드 1장 드로우 (원본 GamePiece.cs, CardsVar(1))."""
+    relic_id = "game_piece"
+    name = "Game Piece"
+    rarity = RelicRarity.RARE
+    description = "파워 카드를 사용할 때마다 카드 1장 드로우"
+
+    def on_card_played(self, card, combat=None) -> None:
+        from sts2_sim.models.sts2_card import CardType
+        if card.card_type == CardType.POWER and combat is not None:
+            combat.draw_cards(1)
+
+
+class PowerCell(STS2Relic):
+    """파워 셀 — 전투 첫 턴 시작 시 0코스트 카드를 2장 골라 손패에 추가
+    (원본 PowerCell.cs, CardsVar(2), CostModifiers.Local == 0 카드 StableShuffle 후 Hand 추가)."""
+    relic_id = "power_cell"
+    name = "Power Cell"
+    rarity = RelicRarity.RARE
+    description = "전투 첫 턴에 0코스트 카드 2장을 뽑을 더미에서 고른 뒤 손패로 가져온다"
+
+    def on_turn_start(self, combat=None, turn: int = 1) -> None:
+        if turn > 1 or combat is None:
+            return
+        candidates = [c for c in combat.draw_pile
+                      if not c.x_cost and c.cost == 0]
+        combat.rng.shuffle(candidates)
+        for card in candidates[:2]:
+            combat.draw_pile.remove(card)
+            combat.hand.append(card)
+
+
+class Mango(STS2Relic):
+    """망고 — 획득 시 최대 HP 14 증가 (원본 Mango.cs, MaxHpVar(14), AfterObtained)."""
+    relic_id = "mango"
+    name = "Mango"
+    rarity = RelicRarity.RARE
+    description = "획득 시 최대 HP 14 증가"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        gain = getattr(owner, "gain_max_hp", None)
+        if gain:
+            gain(14)
+
+
+class Pear(STS2Relic):
+    """배 — 획득 시 최대 HP 10 증가 (원본 Pear.cs, MaxHpVar(10), AfterObtained)."""
+    relic_id = "pear"
+    name = "Pear"
+    rarity = RelicRarity.UNCOMMON
+    description = "획득 시 최대 HP 10 증가"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        gain = getattr(owner, "gain_max_hp", None)
+        if gain:
+            gain(10)
+
+
+class Strawberry(STS2Relic):
+    """딸기 — 획득 시 최대 HP 7 증가 (원본 Strawberry.cs, MaxHpVar(7), AfterObtained)."""
+    relic_id = "strawberry"
+    name = "Strawberry"
+    rarity = RelicRarity.COMMON
+    description = "획득 시 최대 HP 7 증가"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        gain = getattr(owner, "gain_max_hp", None)
+        if gain:
+            gain(7)
+
+
+class NutritiousOyster(STS2Relic):
+    """영양가 있는 굴 — 획득 시 최대 HP 11 증가 (원본 NutritiousOyster.cs, MaxHpVar(11), AfterObtained)."""
+    relic_id = "nutritious_oyster"
+    name = "Nutritious Oyster"
+    rarity = RelicRarity.ANCIENT
+    description = "획득 시 최대 HP 11 증가"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        gain = getattr(owner, "gain_max_hp", None)
+        if gain:
+            gain(11)
+
+
+class FakeMango(STS2Relic):
+    """가짜 망고 — 획득 시 최대 HP 3 증가 (원본 FakeMango.cs, MaxHpVar(3), AfterObtained)."""
+    relic_id = "fake_mango"
+    name = "Fake Mango"
+    rarity = RelicRarity.EVENT
+    description = "획득 시 최대 HP 3 증가"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        gain = getattr(owner, "gain_max_hp", None)
+        if gain:
+            gain(3)
+
+
+class LeesWaffle(STS2Relic):
+    """리의 와플 — 획득 시 최대 HP 7 증가 후 완전 회복 (원본 LeesWaffle.cs, MaxHpVar(7) + 풀힐)."""
+    relic_id = "lees_waffle"
+    name = "Lee's Waffle"
+    rarity = RelicRarity.SHOP
+    description = "획득 시 최대 HP 7 증가 후 HP를 최대치까지 회복"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        gain = getattr(owner, "gain_max_hp", None)
+        if gain:
+            gain(7)
+        owner.heal(owner.max_hp - owner.current_hp)
+
+
+class FakeLeesWaffle(STS2Relic):
+    """가짜 리의 와플 — 획득 시 최대 HP의 10% 회복 (원본 FakeLeesWaffle.cs, HealVar(10) = MaxHp*10%)."""
+    relic_id = "fake_lees_waffle"
+    name = "Fake Lee's Waffle"
+    rarity = RelicRarity.EVENT
+    description = "획득 시 최대 HP의 10%만큼 회복"
+
+    def on_equip(self, owner: Creature) -> None:
+        super().on_equip(owner)
+        owner.heal(owner.max_hp // 10)
+
+
 RELIC_REGISTRY = {
     # Starter
     "burning_blood": BurningBlood,
@@ -997,6 +1276,30 @@ RELIC_REGISTRY = {
     "mr_struggles": MrStruggles,
     "royal_poison": RoyalPoison,
     "lost_wisp": LostWisp,
+    # B27 — Event
+    "fake_anchor": FakeAnchor,
+    "sword_of_jade": SwordOfJade,
+    "fake_blood_vial": FakeBloodVial,
+    "fake_happy_flower": FakeHappyFlower,
+    "daughter_of_the_wind": DaughterOfTheWind,
+    "fake_mango": FakeMango,
+    "fake_lees_waffle": FakeLeesWaffle,
+    # B27 — Starter
+    "phylactery_unbound": PhylacteryUnbound,
+    "divine_destiny": DivineDestiny,
+    "ring_of_the_drake": RingOfTheDrake,
+    # B27 — Rare
+    "meat_on_the_bone": MeatOnTheBone,
+    "game_piece": GamePiece,
+    "power_cell": PowerCell,
+    "mango": Mango,
+    # B27 — Ancient
+    "paels_blood": PaelsBlood,
+    "nutritious_oyster": NutritiousOyster,
+    # B27 — Common / Uncommon / Shop
+    "strawberry": Strawberry,
+    "pear": Pear,
+    "lees_waffle": LeesWaffle,
 }
 
 

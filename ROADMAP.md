@@ -4,9 +4,9 @@ Slay the Spire 2 헤드리스 Python 시뮬레이터.
 **`sts2.dll` 디컴파일 코드(`decompiled/MegaCrit.Sts2.Core.*`)를 유일한 근거 자료로 삼아** 실제 STS2 게임 데이터를 이식한다.
 (이전의 STS1 기반 추정 구현은 전부 제거됨.)
 
-**현재 위치: `S1.M3.B26 — 렐릭 배치 26` 완료** — 카드 507종 /
-파워 190종 / 몬스터 96종 / 인카운터 71종 / 렐릭 50종 / 오브 5종,
-전체 회귀 35스위트 전체 통과.
+**현재 위치: `S1.M3.B27 — 렐릭 배치 27` 완료** — 카드 507종 /
+파워 190종 / 몬스터 96종 / 인카운터 71종 / 렐릭 69종 / 오브 5종,
+전체 회귀 36스위트 전체 통과.
 
 ## 작업 단위와 ID 규약
 
@@ -57,10 +57,10 @@ Phase 6의 몬스터 모듈 계보는 `6j=B07a~B07c`, `6k=B08`, `6l=B09`,
 | 인카운터 | 71 / 88 | 81% |
 | 오브 | 5 / 5 | 100% |
 | **전투 코어 소계** | **869 / 1051** | **83%** |
-| 렐릭 | 50 / 297 | 17% |
+| 렐릭 | 69 / 297 | 23% |
 | 포션 | 0 / 64 | 0% |
 | 이벤트 | 0 / 59 | 0% |
-| **런 콘텐츠 소계** | **50 / 420** | **12%** |
+| **런 콘텐츠 소계** | **69 / 420** | **16%** |
 
 전투 자체는 약 81%까지 왔고 런 레벨 콘텐츠가 비어 있다. 클래스 수로는
 드러나지 않는 구조적 공백이 하나 더 있다 — `core/run.py`가 실제 맵 그래프
@@ -739,13 +739,28 @@ Phase 6l부터 세 번 미뤄온 "전투 도중 몬스터 추가" 구조. 소환
   `is_upgradable` 판정 추가; MaxUpgradeLevel 0인 구현 상태 카드는 업그레이드 대상에서 제외
 - [x] `tests/test_sts2_s1_m3_b26.py`(7개) 및 전체 회귀 35스위트 통과
 
-## 📋 `S1.M3.B27 — 지속 콘텐츠 확장` (계획)
+## ✅ `S1.M3.B27 — 렐릭 배치 27` (완료)
 
-렐릭 50종 달성. 남은 렐릭 풀 297종(현재 50종) 중 선행 의존성이 작은
+- [x] 디컴파일 `MegaCrit.Sts2.Core.Models.Relics` 원본 기준으로 전투/드로우/
+  훅으로 완전 재현 가능한 렐릭 **19종** 추가 (렐릭 총 50 → 69종):
+  FakeAnchor(전투 시작 블록4), SwordOfJade(전투 시작 힘3),
+  PhylacteryUnbound(전투 시작 Osty5 + 2턴째부터 매턴 Osty2),
+  MeatOnTheBone(HP≤50% 승리 시 회복12), FakeBloodVial(1턴 HP1),
+  DivineDestiny(1턴 Stars7), FakeHappyFlower(5턴마다 에너지1),
+  PowerCell(1턴 0코스트 카드2장 손패로), DaughterOfTheWind(공격 카드마다 블록1),
+  GamePiece(파워 카드마다 드로우1), RingOfTheDrake(3턴까지 드로우+2),
+  PaelsBlood(매턴 드로우+1), Mango(+14), Pear(+10), Strawberry(+7),
+  NutritiousOyster(+11), FakeMango(+3), LeesWaffle(+7 후 풀회복),
+  FakeLeesWaffle(최대HP 10% 회복)
+- [x] `tests/test_sts2_s1_m3_b27.py`(16개) 및 전체 회귀 36스위트 통과
+
+## 📋 `S1.M3.B28 — 지속 콘텐츠 확장` (계획)
+
+렐릭 69종 달성. 남은 렐릭 풀 297종(현재 69종) 중 선행 의존성이 작은
 묶음을 원본 대조 후 진행한다. Affliction, 다체 보스처럼 별도 엔진이
 필요한 대상은 한 Batch에 억지로 섞지 않는다.
 
-- [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 50종. 현재 전투·런 훅으로
+- [ ] 렐릭 풀 297종 (`Models.RelicPools`) — 현재 69종. 현재 전투·런 훅으로
   완전 재현 가능한 렐릭을 원본 대조 후 작은 묶음으로 진행
 - [ ] 몬스터 잔여: InfestedPrism(`VitalSparkPower`, Affliction/Tainted 필요) /
   ThievingHopper(`EscapeArtistPower·FlutterPower·SwipePower`, 영구 덱 절취) /
@@ -802,6 +817,7 @@ python -m tests.test_sts2_s1_m3_b23    # 배치23 (렐릭 정합성 수정)
 python -m tests.test_sts2_s1_m3_b24    # 배치24 (렐릭 배치 24)
 python -m tests.test_sts2_s1_m3_b25    # 배치25 (런 루프 인카운터 해금 + 렐릭 배치 25)
 python -m tests.test_sts2_s1_m3_b26    # 배치26 (렐릭 배치 26 + IsUpgradable)
+python -m tests.test_sts2_s1_m3_b27    # 배치27 (렐릭 배치 27)
 ```
 
 **통계 실행:**
